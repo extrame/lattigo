@@ -19,7 +19,7 @@ var flagLongTest = flag.Bool("long", false, "run the long test suite (all parame
 var flagParamString = flag.String("params", "", "specify the test cryptographic parameters as a JSON string. Overrides -short and -long.")
 
 func testString(opname string, p Parameters) string {
-	return fmt.Sprintf("%s/LogN=%d/logQ=%d/alpha=%d/beta=%d", opname, p.LogN(), p.LogQP(), p.PCount(), p.Beta())
+	return fmt.Sprintf("%s/LogN=%d/logQ=%d/alpha=%d/beta=%d", opname, p.LogN(), p.LogQP(), p.PCount(), p.DecompRNS())
 }
 
 type testContext struct {
@@ -95,7 +95,7 @@ func genTestParams(params Parameters) (testctx *testContext, err error) {
 	testctx.kgen = NewKeyGenerator(testctx.params)
 	testctx.sk, testctx.pk = testctx.kgen.GenKeyPair()
 	if params.PCount() != 0 {
-		testctx.rlk = testctx.kgen.GenRelinearizationKey(testctx.sk, 1)
+		testctx.rlk = testctx.kgen.GenRelinearizationKey(testctx.sk, 1, 0)
 	}
 
 	testctx.encoder = NewEncoder(testctx.params)
@@ -563,7 +563,7 @@ func testEvaluatorKeySwitch(testctx *testContext, t *testing.T) {
 
 	sk2 := testctx.kgen.GenSecretKey()
 	decryptorSk2 := NewDecryptor(testctx.params, sk2)
-	switchKey := testctx.kgen.GenSwitchingKey(testctx.sk, sk2)
+	switchKey := testctx.kgen.GenSwitchingKey(testctx.sk, sk2, 0)
 
 	t.Run(testString("Evaluator/KeySwitch/InPlace", testctx.params), func(t *testing.T) {
 		values, _, ciphertext := newTestVectorsRingQ(testctx, testctx.encryptorPk, t)
@@ -585,7 +585,7 @@ func testEvaluatorRotate(testctx *testContext, t *testing.T) {
 	}
 
 	rots := []int{1, -1, 4, -4, 63, -63}
-	rotkey := testctx.kgen.GenRotationKeysForRotations(rots, true, testctx.sk)
+	rotkey := testctx.kgen.GenRotationKeysForRotations(rots, true, testctx.sk, 0)
 	evaluator := testctx.evaluator.WithKey(rlwe.EvaluationKey{Rlk: testctx.rlk, Rtks: rotkey})
 
 	t.Run(testString("Evaluator/RotateRows", testctx.params), func(t *testing.T) {
@@ -629,7 +629,7 @@ func testEvaluatorRotate(testctx *testContext, t *testing.T) {
 		}
 	})
 
-	rotkey = testctx.kgen.GenRotationKeysForInnerSum(testctx.sk)
+	rotkey = testctx.kgen.GenRotationKeysForInnerSum(testctx.sk, 0)
 	evaluator = evaluator.WithKey(rlwe.EvaluationKey{Rlk: testctx.rlk, Rtks: rotkey})
 
 	t.Run(testString("Evaluator/Rotate/InnerSum", testctx.params), func(t *testing.T) {

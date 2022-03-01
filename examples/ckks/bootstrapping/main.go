@@ -36,6 +36,8 @@ func main() {
 		panic(err)
 	}
 
+	bitDecomp := 0
+
 	fmt.Println()
 	fmt.Printf("CKKS parameters: logN = %d, logSlots = %d, h = %d, logQP = %d, levels = %d, scale= 2^%f, sigma = %f \n", params.LogN(), params.LogSlots(), params.HammingWeight(), params.LogQP(), params.QCount(), math.Log2(params.DefaultScale()), params.Sigma())
 
@@ -51,8 +53,8 @@ func main() {
 	fmt.Println()
 	fmt.Println("Generating bootstrapping keys...")
 	rotations := btpParams.RotationsForBootstrapping(params)
-	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
-	rlk := kgen.GenRelinearizationKey(sk, 2)
+	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk, bitDecomp)
+	rlk := kgen.GenRelinearizationKey(sk, 2, bitDecomp)
 	if btp, err = bootstrapping.NewBootstrapper(params, btpParams, rlwe.EvaluationKey{Rlk: rlk, Rtks: rotkeys}); err != nil {
 		panic(err)
 	}
