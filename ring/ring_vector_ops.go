@@ -620,3 +620,21 @@ func MulByPow2Vec(p1, p2 []uint64, pow2 int, qi, mredParams uint64) {
 		z[7] = PowerOf2(x[7], pow2, qi, mredParams)
 	}
 }
+
+// MaskVec returns p2 = (p1>>w) & mask
+func MaskVec(p1, p2 []uint64, w int, mask uint64){
+	for j := 0; j < len(p1); j = j + 8 {
+
+		x := (*[8]uint64)(unsafe.Pointer(&p1[j]))
+		z := (*[8]uint64)(unsafe.Pointer(&p2[j]))
+
+		z[0] = (x[0]>>w) & mask
+		z[1] = (x[1]>>w) & mask
+		z[2] = (x[2]>>w) & mask
+		z[3] = (x[3]>>w) & mask
+		z[4] = (x[4]>>w) & mask
+		z[5] = (x[5]>>w) & mask
+		z[6] = (x[6]>>w) & mask
+		z[7] = (x[7]>>w) & mask
+	}
+}
