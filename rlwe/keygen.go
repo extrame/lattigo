@@ -51,8 +51,8 @@ func NewKeyGenerator(params Parameters) KeyGenerator {
 	if params.PCount() > 0 {
 		poolQP = params.RingQP().NewPoly()
 		uniformSamplerP = ring.NewUniformSampler(prng, params.RingP())
-	}else{
-		poolQP = PolyQP{Q:params.RingQ().NewPoly()}
+	} else {
+		poolQP = PolyQP{Q: params.RingQ().NewPoly()}
 	}
 
 	return &keyGenerator{
@@ -270,9 +270,9 @@ func (keygen *keyGenerator) GenSwitchingKeysForRingSwap(skStd, skConjugateInvari
 func (keygen *keyGenerator) GenSwitchingKey(skInput, skOutput *SecretKey) (swk *SwitchingKey) {
 
 	var levelP int
-	if skOutput.Value.P != nil{
+	if skOutput.Value.P != nil {
 		levelP = skOutput.Value.P.Level()
-	}else{
+	} else {
 		levelP = -1
 	}
 
@@ -282,7 +282,7 @@ func (keygen *keyGenerator) GenSwitchingKey(skInput, skOutput *SecretKey) (swk *
 
 		ring.MapSmallDimensionToLargerDimensionNTT(skOutput.Value.Q, keygen.poolQP.Q)
 
-		if levelP != -1{
+		if levelP != -1 {
 			ring.MapSmallDimensionToLargerDimensionNTT(skOutput.Value.P, keygen.poolQP.P)
 		}
 

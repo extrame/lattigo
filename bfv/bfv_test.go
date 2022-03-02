@@ -19,7 +19,7 @@ var flagLongTest = flag.Bool("long", false, "run the long test suite (all parame
 var flagParamString = flag.String("params", "", "specify the test cryptographic parameters as a JSON string. Overrides -short and -long.")
 
 func testString(opname string, p Parameters) string {
-	return fmt.Sprintf("%s/LogN=%d/logQ=%d/alpha=%d/beta=%d", opname, p.LogN(), p.LogQP(), p.PCount(), p.DecompRNS())
+	return fmt.Sprintf("%s/LogN=%d/logQ=%d/alpha=%d/beta=%d", opname, p.LogN(), p.LogQP(), p.PCount(), p.DecompRNS(p.QCount()-1, p.PCount()-1))
 }
 
 type testContext struct {
@@ -95,7 +95,7 @@ func genTestParams(params Parameters) (testctx *testContext, err error) {
 	testctx.kgen = NewKeyGenerator(testctx.params)
 	testctx.sk, testctx.pk = testctx.kgen.GenKeyPair()
 	if params.PCount() != 0 {
-		testctx.rlk = testctx.kgen.GenRelinearizationKey(testctx.sk, 1, 0)
+		testctx.rlk = testctx.kgen.GenRelinearizationKey(testctx.sk, 1)
 	}
 
 	testctx.encoder = NewEncoder(testctx.params)
@@ -536,10 +536,6 @@ func testEvaluator(testctx *testContext, t *testing.T) {
 
 	t.Run(testString("Evaluator/Mul/Relinearize", testctx.params), func(t *testing.T) {
 
-		if testctx.params.PCount() == 0 {
-			t.Skip("#Pi is empty")
-		}
-
 		values1, _, ciphertext1 := newTestVectorsRingQ(testctx, testctx.encryptorPk, t)
 		values2, _, ciphertext2 := newTestVectorsRingQ(testctx, testctx.encryptorPk, t)
 
@@ -557,13 +553,9 @@ func testEvaluator(testctx *testContext, t *testing.T) {
 
 func testEvaluatorKeySwitch(testctx *testContext, t *testing.T) {
 
-	if testctx.params.PCount() == 0 {
-		t.Skip("#Pi is empty")
-	}
-
 	sk2 := testctx.kgen.GenSecretKey()
 	decryptorSk2 := NewDecryptor(testctx.params, sk2)
-	switchKey := testctx.kgen.GenSwitchingKey(testctx.sk, sk2, 0)
+	switchKey := testctx.kgen.GenSwitchingKey(testctx.sk, sk2)
 
 	t.Run(testString("Evaluator/KeySwitch/InPlace", testctx.params), func(t *testing.T) {
 		values, _, ciphertext := newTestVectorsRingQ(testctx, testctx.encryptorPk, t)
@@ -580,12 +572,8 @@ func testEvaluatorKeySwitch(testctx *testContext, t *testing.T) {
 
 func testEvaluatorRotate(testctx *testContext, t *testing.T) {
 
-	if testctx.params.PCount() == 0 {
-		t.Skip("#Pi is empty")
-	}
-
 	rots := []int{1, -1, 4, -4, 63, -63}
-	rotkey := testctx.kgen.GenRotationKeysForRotations(rots, true, testctx.sk, 0)
+	rotkey := testctx.kgen.GenRotationKeysForRotations(rots, true, testctx.sk)
 	evaluator := testctx.evaluator.WithKey(rlwe.EvaluationKey{Rlk: testctx.rlk, Rtks: rotkey})
 
 	t.Run(testString("Evaluator/RotateRows", testctx.params), func(t *testing.T) {
@@ -629,7 +617,7 @@ func testEvaluatorRotate(testctx *testContext, t *testing.T) {
 		}
 	})
 
-	rotkey = testctx.kgen.GenRotationKeysForInnerSum(testctx.sk, 0)
+	rotkey = testctx.kgen.GenRotationKeysForInnerSum(testctx.sk)
 	evaluator = evaluator.WithKey(rlwe.EvaluationKey{Rlk: testctx.rlk, Rtks: rotkey})
 
 	t.Run(testString("Evaluator/Rotate/InnerSum", testctx.params), func(t *testing.T) {
