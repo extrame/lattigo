@@ -46,10 +46,11 @@ func TestLWE(t *testing.T) {
 		}
 
 		for _, testSet := range []func(params rlwe.Parameters, t *testing.T){
-			testLUT,
-			testRLWEToLWE,
-			testLWEToRLWE,
-			testManyRLWEToSingleRLWE,
+			testBinFHE,
+			//testLUT,
+			//estRLWEToLWE,
+			//testLWEToRLWE,
+			//testManyRLWEToSingleRLWE,
 		} {
 			testSet(params, t)
 			runtime.GC()
@@ -68,8 +69,7 @@ func sign(x float64) (y float64) {
 
 	return 1
 }
-
-func testLUT(params rlwe.Parameters, t *testing.T) {
+func testBinFHE(params rlwe.Parameters, t *testing.T) {
 	var err error
 
 	// N=1024, Q=0x7fff801 -> 2^131
@@ -78,7 +78,7 @@ func testLUT(params rlwe.Parameters, t *testing.T) {
 		Q:        []uint64{0x7fff801},
 		P:        []uint64{},
 		Sigma:    rlwe.DefaultSigma,
-		LogBase2: 9,
+		LogBase2: 7,
 	})
 
 	assert.Nil(t, err)
@@ -93,14 +93,167 @@ func testLUT(params rlwe.Parameters, t *testing.T) {
 
 	assert.Nil(t, err)
 
+	paramsKS, err := rlwe.NewParametersFromLiteral(rlwe.ParametersLiteral{
+		LogN:  9,
+		Q:     []uint64{0x7fff801},
+		P:     []uint64{},
+		Sigma: rlwe.DefaultSigma,
+		LogBase2: 0,
+	})
+
+	assert.Nil(t, err)
+
+	t.Run(testString(paramsLUT, "BinFHE/"), func(t *testing.T) {
+
+		ringLWE := paramsLWE.RingQ()
+		ringLUT := paramsLUT.RingQ()
+
+		scaleLWE := float64(paramsLWE.Q()[0]) / 4.0
+		scaleLUT := float64(paramsLUT.Q()[0]) / 4.0
+
+		slots := 1
+
+		LUTPoly := InitGate(xorGate, ringLUT)
+
+		lutPolyMap := make(map[int]*ring.Poly)
+		for i := 0; i < slots; i++ {
+			lutPolyMap[i] = LUTPoly
+		}
+
+		skLWE := rlwe.NewKeyGenerator(paramsLWE).GenSecretKey()
+		encryptorLWE := rlwe.NewEncryptor(paramsLWE, skLWE)
+
+		m0 := rlwe.NewPlaintext(paramsLWE, paramsLWE.MaxLevel())
+		m0.Value.Coeffs[0][0] = uint64(1*scaleLWE/4.0)
+
+		m1 := rlwe.NewPlaintext(paramsLWE, paramsLWE.MaxLevel())
+		m1.Value.Coeffs[0][0] = uint64(1*scaleLWE/4.0)
+		
+		ctm0 := rlwe.NewCiphertextNTT(paramsLWE, 1, paramsLWE.MaxLevel())
+		encryptorLWE.Encrypt(m0, ctm0)
+
+		ctm1 := rlwe.NewCiphertextNTT(paramsLWE, 1, paramsLWE.MaxLevel())
+		encryptorLWE.Encrypt(m1, ctm1)
+
+		handler := NewHandler(paramsLUT, paramsLWE, nil)
+
+		kgenLUT := rlwe.NewKeyGenerator(paramsLUT)
+		skLUT := kgenLUT.GenSecretKey()
+		LUTKEY := handler.GenLUTKey(skLUT, skLWE)
+
+		
+
+		skLWELarge := rlwe.NewSecretKey(paramsLWE)
+		skLWELarge2 := rlwe.NewSecretKey(paramsLUT)
+		ringLWE.InvNTT(skLWE.Value.Q, skLWELarge.Value.Q)
+		ringLWE.InvMForm(skLWELarge.Value.Q, skLWELarge.Value.Q)
+
+		for i := range skLWELarge.Value.Q.Coeffs[0]{
+			c := skLWELarge.Value.Q.Coeffs[0][i]
+			if c == paramsLWE.Q()[0]-1{
+				skLWELarge.Value.Q.Coeffs[0][i] = paramsLUT.Q()[0]-1
+				skLWELarge2.Value.Q.Coeffs[0][i*2] = paramsLUT.Q()[0]-1
+			}else if c != 0{
+				skLWELarge.Value.Q.Coeffs[0][i] = 1
+				skLWELarge2.Value.Q.Coeffs[0][i*2] = 1
+			}
+		}
+
+		paramsKS.RingQ().NTT(skLWELarge.Value.Q, skLWELarge.Value.Q)
+		paramsKS.RingQ().MForm(skLWELarge.Value.Q, skLWELarge.Value.Q)
+
+		paramsLUT.RingQ().NTT(skLWELarge2.Value.Q, skLWELarge2.Value.Q)
+		paramsLUT.RingQ().MForm(skLWELarge2.Value.Q, skLWELarge2.Value.Q)
+
+		skLUT2skLWE := kgenLUT.GenSwitchingKey(skLUT, skLWELarge)
+
+		ringLWE.Add(ctm0.Value[0], ctm1.Value[0], ctm0.Value[0])
+		ringLWE.Add(ctm0.Value[1], ctm1.Value[1], ctm0.Value[1])
+
+		ctsLUT := handler.ExtractAndEvaluateLUT(ctm0, lutPolyMap, LUTKEY)
+
+
+		tmp := rlwe.NewCiphertextNTT(paramsLUT, 1, paramsLUT.MaxLevel())
+		handler.SwitchKeysInPlace(0, ctsLUT[0].Value[1], skLUT2skLWE, handler.Pool[1].Q, handler.Pool[2].Q)
+		ringLUT.AddLvl(0, ctsLUT[0].Value[0], handler.Pool[1].Q, tmp.Value[0])
+		ring.CopyValuesLvl(0, handler.Pool[2].Q, tmp.Value[1])
+		ctLWE := rlwe.NewCiphertextNTT(paramsKS, 1, paramsKS.MaxLevel())
+		rlwe.SwitchCiphertextRingDegreeNTT(tmp, paramsKS.RingQ(), paramsLUT.RingQ(), ctLWE)
+
+		for i := range ctLWE.Value{
+			paramsKS.RingQ().InvNTT(ctLWE.Value[i], ctLWE.Value[i])
+
+			Q := paramsKS.Q()[0]
+			q := paramsLWE.Q()[0]
+			ratio := float64(q)/float64(Q)
+
+			for j := 0; j < paramsLWE.N(); j++{
+
+				c := ctLWE.Value[i].Coeffs[0][j]
+				c = uint64(float64(c) * ratio + 0.5)
+				ctLWE.Value[i].Coeffs[0][j] = c
+			}
+
+			paramsLWE.RingQ().NTT(ctLWE.Value[i], ctLWE.Value[i])
+		}
+
+		q := paramsLWE.Q()[0]
+		qHalf := q >> 1
+
+		
+
+		decryptorLWE := rlwe.NewDecryptor(paramsLWE, skLWE)
+		ptLWE := rlwe.NewPlaintext(paramsLWE, paramsLWE.MaxLevel())
+
+		decryptorLWE.Decrypt(ctLWE, ptLWE)
+
+		_=scaleLUT
+
+		c := ptLWE.Value.Coeffs[0][0]
+
+		var a float64
+		if c >= qHalf {
+			a = -float64(q-c) / scaleLWE
+		} else {
+			a = float64(c) / scaleLWE
+		}
+
+		fmt.Println(math.Round(a*4))
+	})
+}
+
+func testLUT(params rlwe.Parameters, t *testing.T) {
+	var err error
+
+	// N=1024, Q=0x7fff801 -> 2^131
+	paramsLUT, err := rlwe.NewParametersFromLiteral(rlwe.ParametersLiteral{
+		LogN:     8,
+		Q:        []uint64{0x7fff801},
+		P:        []uint64{},
+		Sigma:    rlwe.DefaultSigma,
+		LogBase2: 9,
+	})
+
+	assert.Nil(t, err)
+
+	// N=512, Q=0x3001 -> 2^135
+	paramsLWE, err := rlwe.NewParametersFromLiteral(rlwe.ParametersLiteral{
+		LogN:  7,
+		Q:     []uint64{0x3001},
+		P:     []uint64{},
+		Sigma: rlwe.DefaultSigma,
+	})
+
+	assert.Nil(t, err)
+
 	t.Run(testString(paramsLUT, "LUT/"), func(t *testing.T) {
 
 		scaleLWE := float64(paramsLWE.Q()[0]) / 4.0
 		scaleLUT := float64(paramsLUT.Q()[0]) / 4.0
 
-		slots := 32
+		slots := 16
 
-		LUTPoly := InitLUT(sign, scaleLUT, paramsLUT.RingQ(), -1, 1)
+		LUTPoly := InitLUT(nandGate, scaleLUT, paramsLUT.RingQ(), -1, 1)
 
 		lutPolyMap := make(map[int]*ring.Poly)
 		for i := 0; i < slots; i++ {
@@ -150,9 +303,7 @@ func testLUT(params rlwe.Parameters, t *testing.T) {
 				a = float64(c) / scaleLUT
 			}
 
-			if b := sign(values[i]); b != 0 {
-				assert.Equal(t, math.Round(a), b)
-			}
+			fmt.Printf("%7.4f - %7.4f\n", math.Round(a*8)/8, values[i])
 		}
 	})
 }

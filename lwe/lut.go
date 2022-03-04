@@ -52,6 +52,59 @@ func (h *Handler) ExtractAndEvaluateLUTAndRepack(ct *rlwe.Ciphertext, lutPolyWih
 	return h.MergeRLWE(ciphertexts)
 }
 
+func (h *Handler) EvalGate(ct *Ciphertext, logNLWE int, gate *ring.Poly, lutKey *LUTKey){
+	ks := h.KeySwitcher
+
+	acc := h.accumulator
+
+	ringQLUT := h.paramsLUT.RingQ()
+	ringQLWE := h.paramsLWE.RingQ()
+	ringQPLUT := h.paramsLUT.RingQP()
+
+	// mod 2N
+	mask := uint64(ringQLUT.N<<1) - 1
+
+	tmpRGSW := rlwe.NewCiphertextRGSWNTT(h.paramsLUT, h.paramsLUT.MaxLevel())
+
+	a := ct.Value[0][1:]
+	b := ct.Value[0][0]
+
+	// LWE = -as + m + e, a
+	// LUT = LUT * X^{-as + m + e}
+	ringQLUT.MulCoeffsMontgomery(gate, h.xPowMinusOne[b].Q, acc.Value[0])
+	ringQLUT.Add(acc.Value[0], gate, acc.Value[0])
+	acc.Value[1].Zero() // TODO remove
+	for i := 0; i < ringQLWE.N; i++{
+		MulRGSWByXPowAlphaMinusOne(lutKey.SkPos[i], h.xPowMinusOne[a[i]], ringQPLUT, tmpRGSW)
+		MulRGSWByXPowAlphaMinusOneAndAdd(lutKey.SkNeg[i], h.xPowMinusOne[-a[i]&mask], ringQPLUT, tmpRGSW)
+		AddOneRGSW(lutKey.OneRGSW, ringQLUT, tmpRGSW)
+		ks.ExternalProduct(acc, tmpRGSW, acc)
+	}
+
+	ks.SwitchKeysInPlace(0, acc.Value[1], nil, ks.Pool[1].Q, ks.Pool[2].Q) // TODO : add RLWE -> LWE Key
+	ringQLUT.AddLvl(0, acc.Value[0], ks.Pool[1].Q, acc.Value[0])
+	ringQLUT.InvNTT(ks.Pool[2].Q, acc.Value[1])
+	ringQLUT.InvNTT(acc.Value[0], acc.Value[0])
+
+	Qflo := float64(ringQLUT.Modulus[0])
+	maskLWE := uint64(2<<logNLWE)-1
+
+	c := acc.Value[0].Coeffs[0][0]
+	c = uint64(float64(c<<logNLWE) / Qflo + 0.5)
+	ct.Value[0][0] = c & maskLWE
+
+	c = acc.Value[1].Coeffs[0][0]
+	c = uint64(float64(c<<logNLWE) / Qflo + 0.5)
+	ct.Value[0][1] = c & maskLWE
+	for i := 1; i < ringQLWE.N; i++{
+		c = acc.Value[1].Coeffs[0][ringQLUT.N - 2*i]
+		c = uint64(float64(c<<logNLWE) / Qflo + 0.5)
+		ct.Value[0][i+1] = -c & maskLWE
+	}
+
+
+}
+
 // ExtractAndEvaluateLUT extracts on the fly LWE samples and evaluate the provided LUT on the LWE.
 // ct : a rlwe Ciphertext with coefficient encoded values at level 0
 // lutPolyWihtSlotIndex : a map with [slot_index] -> LUT
