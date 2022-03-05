@@ -1,9 +1,14 @@
-package rlwe
+package rgsw
 
 import (
 	"github.com/tuneinsight/lattigo/v3/ring"
+	"github.com/tuneinsight/lattigo/v3/rlwe"
 	"math"
 )
+
+type evaluator struct {
+	rlwe.KeySwitcher
+}
 
 // ExternalProduct computes RLWE x RGSW -> RLWE
 // RLWE : (-as + m + e, a)
@@ -11,62 +16,62 @@ import (
 // RGSW : [(-as + P*w*m1 + e, a), (-bs + e, b + P*w*m1)]
 //  =
 // RLWE : (<RLWE, RGSW[0]>, <RLWE, RGSW[1]>)
-func (ks *KeySwitcher) ExternalProduct(op0 *Ciphertext, op1 *RGSWCiphertext, op2 *Ciphertext) {
+func (eval *evaluator) ExternalProduct(op0 *rlwe.Ciphertext, op1 *Ciphertext, op2 *rlwe.Ciphertext) {
 
 	levelQ, levelP := op1.LevelQ(), op1.LevelP()
 
-	var c0QP, c1QP PolyQP
+	var c0QP, c1QP rlwe.PolyQP
 	if op0 == op2 {
-		c0QP, c1QP = ks.Pool[1], ks.Pool[2]
+		c0QP, c1QP = eval.Pool[1], eval.Pool[2]
 	} else {
-		c0QP, c1QP = PolyQP{op2.Value[0], ks.Pool[1].P}, PolyQP{op2.Value[1], ks.Pool[2].P}
+		c0QP, c1QP = rlwe.PolyQP{op2.Value[0], eval.Pool[1].P}, rlwe.PolyQP{op2.Value[1], eval.Pool[2].P}
 	}
 
 	if levelP < 1 {
 
 		// If log(Q) * (Q-1)**2 < 2^{64}-1
-		if ringQ := ks.RingQ(); levelQ == 0 && (ringQ.Modulus[0]>>29) == 0 {
-			ks.externalProduct32Bit(op0, op1, c0QP.Q, c1QP.Q)
+		if ringQ := eval.RingQ(); levelQ == 0 && (ringQ.Modulus[0]>>29) == 0 {
+			eval.externalProduct32Bit(op0, op1, c0QP.Q, c1QP.Q)
 			q, mredParams := ringQ.Modulus[0], ringQ.MredParams[0]
 			ring.InvMFormVec(c0QP.Q.Coeffs[0], op2.Value[0].Coeffs[0], q, mredParams)
 			ring.InvMFormVec(c1QP.Q.Coeffs[0], op2.Value[1].Coeffs[0], q, mredParams)
 		} else {
-			ks.externalProductInPlaceSinglePAndBitDecomp(op0, op1, ks.Pool[1], ks.Pool[2])
+			eval.externalProductInPlaceSinglePAndBitDecomp(op0, op1, eval.Pool[1], eval.Pool[2])
 
 			if levelP == 0 {
-				ks.BasisExtender.ModDownQPtoQNTT(levelQ, levelP, c0QP.Q, c0QP.P, op2.Value[0])
-				ks.BasisExtender.ModDownQPtoQNTT(levelQ, levelP, c1QP.Q, c1QP.P, op2.Value[1])
+				eval.BasisExtender.ModDownQPtoQNTT(levelQ, levelP, c0QP.Q, c0QP.P, op2.Value[0])
+				eval.BasisExtender.ModDownQPtoQNTT(levelQ, levelP, c1QP.Q, c1QP.P, op2.Value[1])
 			} else {
 				op2.Value[0].CopyValues(c0QP.Q)
 				op2.Value[1].CopyValues(c1QP.Q)
 			}
 		}
 	} else {
-		ks.externalProductInPlaceMultipleP(levelQ, levelP, op0, op1, ks.Pool[1].Q, ks.Pool[1].P, ks.Pool[2].Q, ks.Pool[2].P)
-		ks.BasisExtender.ModDownQPtoQNTT(levelQ, levelP, c0QP.Q, c0QP.P, op2.Value[0])
-		ks.BasisExtender.ModDownQPtoQNTT(levelQ, levelP, c1QP.Q, c1QP.P, op2.Value[1])
+		eval.externalProductInPlaceMultipleP(levelQ, levelP, op0, op1, eval.Pool[1].Q, eval.Pool[1].P, eval.Pool[2].Q, eval.Pool[2].P)
+		eval.BasisExtender.ModDownQPtoQNTT(levelQ, levelP, c0QP.Q, c0QP.P, op2.Value[0])
+		eval.BasisExtender.ModDownQPtoQNTT(levelQ, levelP, c1QP.Q, c1QP.P, op2.Value[1])
 	}
 }
 
-func (ks *KeySwitcher) externalProduct32Bit(ct0 *Ciphertext, rgsw *RGSWCiphertext, c0, c1 *ring.Poly) {
+func (eval *evaluator) externalProduct32Bit(ct0 *rlwe.Ciphertext, rgsw *Ciphertext, c0, c1 *ring.Poly) {
 
 	// rgsw = [(-as + P*w*m1 + e, a), (-bs + e, b + P*w*m1)]
 	// ct = [-cs + m0 + e, c]
 	// ctOut = [<ct, rgsw[0]>, <ct, rgsw[1]>] = [ct[0] * rgsw[0][0] + ct[1] * rgsw[0][1], ct[0] * rgsw[1][0] + ct[1] * rgsw[1][1]]
-	ringQ := ks.RingQ()
-	lb2 := ks.logbase2
+	ringQ := eval.RingQ()
+	lb2 := eval.LogBase2()
 	mask := uint64(((1 << lb2) - 1))
 
-	cw := ks.Pool[0].Q.Coeffs[0]
-	cwNTT := ks.PoolBitDecomp
+	cw := eval.Pool[0].Q.Coeffs[0]
+	cwNTT := eval.PoolBitDecomp
 
 	acc0 := c0.Coeffs[0]
 	acc1 := c1.Coeffs[0]
 
 	// (a, b) + (c0 * rgsw[0][0], c0 * rgsw[0][1])
-	ringQ.InvNTTLvl(0, ct0.Value[0], ks.PoolInvNTT)
+	ringQ.InvNTTLvl(0, ct0.Value[0], eval.PoolInvNTT)
 	for j, el := range rgsw.Value[0] {
-		ring.MaskVec(ks.PoolInvNTT.Coeffs[0], cw, j*lb2, mask)
+		ring.MaskVec(eval.PoolInvNTT.Coeffs[0], cw, j*lb2, mask)
 		if j == 0 {
 			ringQ.NTTSingleLazy(0, cw, cwNTT)
 			ring.MulCoeffsNoModVec(el[0][0].Q.Coeffs[0], cwNTT, acc0)
@@ -79,42 +84,42 @@ func (ks *KeySwitcher) externalProduct32Bit(ct0 *Ciphertext, rgsw *RGSWCiphertex
 	}
 
 	// (a, b) + (c1 * rgsw[1][0], c1 * rgsw[1][1])
-	ringQ.InvNTTLvl(0, ct0.Value[1], ks.PoolInvNTT)
+	ringQ.InvNTTLvl(0, ct0.Value[1], eval.PoolInvNTT)
 	for j, el := range rgsw.Value[0] {
-		ring.MaskVec(ks.PoolInvNTT.Coeffs[0], cw, j*lb2, mask)
+		ring.MaskVec(eval.PoolInvNTT.Coeffs[0], cw, j*lb2, mask)
 		ringQ.NTTSingleLazy(0, cw, cwNTT)
 		ring.MulCoeffsNoModAndAddNoModVec(el[1][0].Q.Coeffs[0], cwNTT, acc0)
 		ring.MulCoeffsNoModAndAddNoModVec(el[1][1].Q.Coeffs[0], cwNTT, acc1)
 	}
 }
 
-func (ks *KeySwitcher) externalProductInPlaceSinglePAndBitDecomp(ct0 *Ciphertext, rgsw *RGSWCiphertext, c0QP, c1QP PolyQP) {
+func (eval *evaluator) externalProductInPlaceSinglePAndBitDecomp(ct0 *rlwe.Ciphertext, rgsw *Ciphertext, c0QP, c1QP rlwe.PolyQP) {
 
 	// rgsw = [(-as + P*w*m1 + e, a), (-bs + e, b + P*w*m1)]
 	// ct = [-cs + m0 + e, c]
 	// ctOut = [<ct, rgsw[0]>, <ct, rgsw[1]>] = [ct[0] * rgsw[0][0] + ct[1] * rgsw[0][1], ct[0] * rgsw[1][0] + ct[1] * rgsw[1][1]]
-	ringQ := ks.RingQ()
-	ringP := ks.RingP()
+	ringQ := eval.RingQ()
+	ringP := eval.RingP()
 
 	levelQ := rgsw.LevelQ()
 	levelP := rgsw.LevelP()
 
-	lb2 := ks.logbase2
+	lb2 := eval.LogBase2()
 	mask := uint64(((1 << lb2) - 1))
 	if mask == 0 {
 		mask = 0xFFFFFFFFFFFFFFFF
 	}
 
-	decompRNS := ks.DecompRNS(levelQ, levelP)
-	decompBIT := ks.DecompBIT(levelQ, levelP)
+	decompRNS := eval.DecompRNS(levelQ, levelP)
+	decompBIT := eval.DecompBIT(levelQ, levelP)
 
-	ringQ.InvNTTLvl(levelQ, ct0.Value[0], ks.PoolInvNTT)
-	cw := ks.Pool[0].Q.Coeffs[0]
-	cwNTT := ks.PoolBitDecomp
+	ringQ.InvNTTLvl(levelQ, ct0.Value[0], eval.PoolInvNTT)
+	cw := eval.Pool[0].Q.Coeffs[0]
+	cwNTT := eval.PoolBitDecomp
 	for i := 0; i < decompRNS; i++ {
 		for j := 0; j < decompBIT; j++ {
 
-			ring.MaskVec(ks.PoolInvNTT.Coeffs[i], cw, j*lb2, mask)
+			ring.MaskVec(eval.PoolInvNTT.Coeffs[i], cw, j*lb2, mask)
 
 			// (a, b) + (c0 * rgsw[0][0], c0 * rgsw[0][1])
 			if i == 0 && j == 0 {
@@ -145,10 +150,10 @@ func (ks *KeySwitcher) externalProductInPlaceSinglePAndBitDecomp(ct0 *Ciphertext
 		}
 	}
 
-	ringQ.InvNTTLvl(levelQ, ct0.Value[1], ks.PoolInvNTT)
+	ringQ.InvNTTLvl(levelQ, ct0.Value[1], eval.PoolInvNTT)
 	for i := 0; i < decompRNS; i++ {
 		for j := 0; j < decompBIT; j++ {
-			ring.MaskVec(ks.PoolInvNTT.Coeffs[i], cw, j*lb2, mask)
+			ring.MaskVec(eval.PoolInvNTT.Coeffs[i], cw, j*lb2, mask)
 
 			// (a, b) + (c1 * rgsw[1][0], c1 * rgsw[1][1])
 
@@ -167,31 +172,31 @@ func (ks *KeySwitcher) externalProductInPlaceSinglePAndBitDecomp(ct0 *Ciphertext
 	}
 }
 
-func (ks *KeySwitcher) externalProductInPlaceMultipleP(levelQ, levelP int, ct0 *Ciphertext, rgsw *RGSWCiphertext, c0OutQ, c0OutP, c1OutQ, c1OutP *ring.Poly) {
+func (eval *evaluator) externalProductInPlaceMultipleP(levelQ, levelP int, ct0 *rlwe.Ciphertext, rgsw *Ciphertext, c0OutQ, c0OutP, c1OutQ, c1OutP *ring.Poly) {
 	var reduce int
 
-	ringQ := ks.RingQ()
-	ringP := ks.RingP()
-	ringQP := ks.RingQP()
+	ringQ := eval.RingQ()
+	ringP := eval.RingP()
+	ringQP := eval.RingQP()
 
-	c2QP := ks.Pool[0]
+	c2QP := eval.Pool[0]
 
-	c0QP := PolyQP{c0OutQ, c0OutP}
-	c1QP := PolyQP{c1OutQ, c1OutP}
+	c0QP := rlwe.PolyQP{c0OutQ, c0OutP}
+	c1QP := rlwe.PolyQP{c1OutQ, c1OutP}
 
 	alpha := levelP + 1
 	beta := int(math.Ceil(float64(levelQ+1) / float64(levelP+1)))
 
-	QiOverF := ks.Parameters.QiOverflowMargin(levelQ) >> 1
-	PiOverF := ks.Parameters.PiOverflowMargin(levelP) >> 1
+	QiOverF := eval.Parameters.QiOverflowMargin(levelQ) >> 1
+	PiOverF := eval.Parameters.PiOverflowMargin(levelP) >> 1
 
 	var c2NTT, c2InvNTT *ring.Poly
 	if ct0.Value[0].IsNTT {
 		c2NTT = ct0.Value[0]
-		c2InvNTT = ks.PoolInvNTT
+		c2InvNTT = eval.PoolInvNTT
 		ringQ.InvNTTLvl(levelQ, c2NTT, c2InvNTT)
 	} else {
-		c2NTT = ks.PoolInvNTT
+		c2NTT = eval.PoolInvNTT
 		c2InvNTT = ct0.Value[0]
 		ringQ.NTTLvl(levelQ, c2InvNTT, c2NTT)
 	}
@@ -199,7 +204,7 @@ func (ks *KeySwitcher) externalProductInPlaceMultipleP(levelQ, levelP int, ct0 *
 	// (a, b) + (c0 * rgsw[0][0], c0 * rgsw[0][1])
 	for i := 0; i < beta; i++ {
 
-		ks.DecomposeSingleNTT(levelQ, levelP, alpha, i, c2NTT, c2InvNTT, c2QP.Q, c2QP.P)
+		eval.DecomposeSingleNTT(levelQ, levelP, alpha, i, c2NTT, c2InvNTT, c2QP.Q, c2QP.P)
 
 		if i == 0 {
 			ringQP.MulCoeffsMontgomeryConstantLvl(levelQ, levelP, rgsw.Value[i][0][0][0], c2QP, c0QP)
@@ -224,10 +229,10 @@ func (ks *KeySwitcher) externalProductInPlaceMultipleP(levelQ, levelP int, ct0 *
 
 	if ct0.Value[0].IsNTT {
 		c2NTT = ct0.Value[1]
-		c2InvNTT = ks.PoolInvNTT
+		c2InvNTT = eval.PoolInvNTT
 		ringQ.InvNTTLvl(levelQ, c2NTT, c2InvNTT)
 	} else {
-		c2NTT = ks.PoolInvNTT
+		c2NTT = eval.PoolInvNTT
 		c2InvNTT = ct0.Value[1]
 		ringQ.NTTLvl(levelQ, c2InvNTT, c2NTT)
 	}
@@ -235,7 +240,7 @@ func (ks *KeySwitcher) externalProductInPlaceMultipleP(levelQ, levelP int, ct0 *
 	// (a, b) + (c1 * rgsw[1][0], c1 * rgsw[1][1])
 	for i := 0; i < beta; i++ {
 
-		ks.DecomposeSingleNTT(levelQ, levelP, alpha, i, c2NTT, c2InvNTT, c2QP.Q, c2QP.P)
+		eval.DecomposeSingleNTT(levelQ, levelP, alpha, i, c2NTT, c2InvNTT, c2QP.Q, c2QP.P)
 
 		if i == 0 {
 			ringQP.MulCoeffsMontgomeryConstantAndAddNoModLvl(levelQ, levelP, rgsw.Value[i][0][1][0], c2QP, c0QP)

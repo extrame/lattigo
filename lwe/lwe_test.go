@@ -94,10 +94,10 @@ func testBinFHE(params rlwe.Parameters, t *testing.T) {
 	assert.Nil(t, err)
 
 	paramsKS, err := rlwe.NewParametersFromLiteral(rlwe.ParametersLiteral{
-		LogN:  9,
-		Q:     []uint64{0x7fff801},
-		P:     []uint64{},
-		Sigma: rlwe.DefaultSigma,
+		LogN:     9,
+		Q:        []uint64{0x7fff801},
+		P:        []uint64{},
+		Sigma:    rlwe.DefaultSigma,
 		LogBase2: 0,
 	})
 
@@ -124,11 +124,11 @@ func testBinFHE(params rlwe.Parameters, t *testing.T) {
 		encryptorLWE := rlwe.NewEncryptor(paramsLWE, skLWE)
 
 		m0 := rlwe.NewPlaintext(paramsLWE, paramsLWE.MaxLevel())
-		m0.Value.Coeffs[0][0] = uint64(1*scaleLWE/4.0)
+		m0.Value.Coeffs[0][0] = uint64(1 * scaleLWE / 4.0)
 
 		m1 := rlwe.NewPlaintext(paramsLWE, paramsLWE.MaxLevel())
-		m1.Value.Coeffs[0][0] = uint64(1*scaleLWE/4.0)
-		
+		m1.Value.Coeffs[0][0] = uint64(1 * scaleLWE / 4.0)
+
 		ctm0 := rlwe.NewCiphertextNTT(paramsLWE, 1, paramsLWE.MaxLevel())
 		encryptorLWE.Encrypt(m0, ctm0)
 
@@ -141,19 +141,17 @@ func testBinFHE(params rlwe.Parameters, t *testing.T) {
 		skLUT := kgenLUT.GenSecretKey()
 		LUTKEY := handler.GenLUTKey(skLUT, skLWE)
 
-		
-
 		skLWELarge := rlwe.NewSecretKey(paramsLWE)
 		skLWELarge2 := rlwe.NewSecretKey(paramsLUT)
 		ringLWE.InvNTT(skLWE.Value.Q, skLWELarge.Value.Q)
 		ringLWE.InvMForm(skLWELarge.Value.Q, skLWELarge.Value.Q)
 
-		for i := range skLWELarge.Value.Q.Coeffs[0]{
+		for i := range skLWELarge.Value.Q.Coeffs[0] {
 			c := skLWELarge.Value.Q.Coeffs[0][i]
-			if c == paramsLWE.Q()[0]-1{
-				skLWELarge.Value.Q.Coeffs[0][i] = paramsLUT.Q()[0]-1
-				skLWELarge2.Value.Q.Coeffs[0][i*2] = paramsLUT.Q()[0]-1
-			}else if c != 0{
+			if c == paramsLWE.Q()[0]-1 {
+				skLWELarge.Value.Q.Coeffs[0][i] = paramsLUT.Q()[0] - 1
+				skLWELarge2.Value.Q.Coeffs[0][i*2] = paramsLUT.Q()[0] - 1
+			} else if c != 0 {
 				skLWELarge.Value.Q.Coeffs[0][i] = 1
 				skLWELarge2.Value.Q.Coeffs[0][i*2] = 1
 			}
@@ -172,7 +170,6 @@ func testBinFHE(params rlwe.Parameters, t *testing.T) {
 
 		ctsLUT := handler.ExtractAndEvaluateLUT(ctm0, lutPolyMap, LUTKEY)
 
-
 		tmp := rlwe.NewCiphertextNTT(paramsLUT, 1, paramsLUT.MaxLevel())
 		handler.SwitchKeysInPlace(0, ctsLUT[0].Value[1], skLUT2skLWE, handler.Pool[1].Q, handler.Pool[2].Q)
 		ringLUT.AddLvl(0, ctsLUT[0].Value[0], handler.Pool[1].Q, tmp.Value[0])
@@ -180,17 +177,17 @@ func testBinFHE(params rlwe.Parameters, t *testing.T) {
 		ctLWE := rlwe.NewCiphertextNTT(paramsKS, 1, paramsKS.MaxLevel())
 		rlwe.SwitchCiphertextRingDegreeNTT(tmp, paramsKS.RingQ(), paramsLUT.RingQ(), ctLWE)
 
-		for i := range ctLWE.Value{
+		for i := range ctLWE.Value {
 			paramsKS.RingQ().InvNTT(ctLWE.Value[i], ctLWE.Value[i])
 
 			Q := paramsKS.Q()[0]
 			q := paramsLWE.Q()[0]
-			ratio := float64(q)/float64(Q)
+			ratio := float64(q) / float64(Q)
 
-			for j := 0; j < paramsLWE.N(); j++{
+			for j := 0; j < paramsLWE.N(); j++ {
 
 				c := ctLWE.Value[i].Coeffs[0][j]
-				c = uint64(float64(c) * ratio + 0.5)
+				c = uint64(float64(c)*ratio + 0.5)
 				ctLWE.Value[i].Coeffs[0][j] = c
 			}
 
@@ -200,14 +197,12 @@ func testBinFHE(params rlwe.Parameters, t *testing.T) {
 		q := paramsLWE.Q()[0]
 		qHalf := q >> 1
 
-		
-
 		decryptorLWE := rlwe.NewDecryptor(paramsLWE, skLWE)
 		ptLWE := rlwe.NewPlaintext(paramsLWE, paramsLWE.MaxLevel())
 
 		decryptorLWE.Decrypt(ctLWE, ptLWE)
 
-		_=scaleLUT
+		_ = scaleLUT
 
 		c := ptLWE.Value.Coeffs[0][0]
 
@@ -218,7 +213,7 @@ func testBinFHE(params rlwe.Parameters, t *testing.T) {
 			a = float64(c) / scaleLWE
 		}
 
-		fmt.Println(math.Round(a*4))
+		fmt.Println(math.Round(a * 4))
 	})
 }
 

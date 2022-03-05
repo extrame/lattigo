@@ -52,7 +52,7 @@ func (h *Handler) ExtractAndEvaluateLUTAndRepack(ct *rlwe.Ciphertext, lutPolyWih
 	return h.MergeRLWE(ciphertexts)
 }
 
-func (h *Handler) EvalGate(ct *Ciphertext, logNLWE int, gate *ring.Poly, lutKey *LUTKey){
+func (h *Handler) EvalGate(ct *Ciphertext, logNLWE int, gate *ring.Poly, lutKey *LUTKey) {
 	ks := h.KeySwitcher
 
 	acc := h.accumulator
@@ -74,7 +74,7 @@ func (h *Handler) EvalGate(ct *Ciphertext, logNLWE int, gate *ring.Poly, lutKey 
 	ringQLUT.MulCoeffsMontgomery(gate, h.xPowMinusOne[b].Q, acc.Value[0])
 	ringQLUT.Add(acc.Value[0], gate, acc.Value[0])
 	acc.Value[1].Zero() // TODO remove
-	for i := 0; i < ringQLWE.N; i++{
+	for i := 0; i < ringQLWE.N; i++ {
 		MulRGSWByXPowAlphaMinusOne(lutKey.SkPos[i], h.xPowMinusOne[a[i]], ringQPLUT, tmpRGSW)
 		MulRGSWByXPowAlphaMinusOneAndAdd(lutKey.SkNeg[i], h.xPowMinusOne[-a[i]&mask], ringQPLUT, tmpRGSW)
 		AddOneRGSW(lutKey.OneRGSW, ringQLUT, tmpRGSW)
@@ -87,21 +87,20 @@ func (h *Handler) EvalGate(ct *Ciphertext, logNLWE int, gate *ring.Poly, lutKey 
 	ringQLUT.InvNTT(acc.Value[0], acc.Value[0])
 
 	Qflo := float64(ringQLUT.Modulus[0])
-	maskLWE := uint64(2<<logNLWE)-1
+	maskLWE := uint64(2<<logNLWE) - 1
 
 	c := acc.Value[0].Coeffs[0][0]
-	c = uint64(float64(c<<logNLWE) / Qflo + 0.5)
+	c = uint64(float64(c<<logNLWE)/Qflo + 0.5)
 	ct.Value[0][0] = c & maskLWE
 
 	c = acc.Value[1].Coeffs[0][0]
-	c = uint64(float64(c<<logNLWE) / Qflo + 0.5)
+	c = uint64(float64(c<<logNLWE)/Qflo + 0.5)
 	ct.Value[0][1] = c & maskLWE
-	for i := 1; i < ringQLWE.N; i++{
-		c = acc.Value[1].Coeffs[0][ringQLUT.N - 2*i]
-		c = uint64(float64(c<<logNLWE) / Qflo + 0.5)
+	for i := 1; i < ringQLWE.N; i++ {
+		c = acc.Value[1].Coeffs[0][ringQLUT.N-2*i]
+		c = uint64(float64(c<<logNLWE)/Qflo + 0.5)
 		ct.Value[0][i+1] = -c & maskLWE
 	}
-
 
 }
 
