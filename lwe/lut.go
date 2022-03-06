@@ -1,6 +1,7 @@
 package lwe
 
 import (
+	"github.com/tuneinsight/lattigo/v3/rgsw"
 	"github.com/tuneinsight/lattigo/v3/ring"
 	"github.com/tuneinsight/lattigo/v3/rlwe"
 	"math/big"
@@ -52,8 +53,9 @@ func (h *Handler) ExtractAndEvaluateLUTAndRepack(ct *rlwe.Ciphertext, lutPolyWih
 	return h.MergeRLWE(ciphertexts)
 }
 
+// EvalGate evaluates the selected binary gate on the input rlwe ciphertext
 func (h *Handler) EvalGate(ct *Ciphertext, logNLWE int, gate *ring.Poly, lutKey *LUTKey) {
-	ks := h.KeySwitcher
+	eval := h.Evaluator
 
 	acc := h.accumulator
 
@@ -64,7 +66,7 @@ func (h *Handler) EvalGate(ct *Ciphertext, logNLWE int, gate *ring.Poly, lutKey 
 	// mod 2N
 	mask := uint64(ringQLUT.N<<1) - 1
 
-	tmpRGSW := rlwe.NewCiphertextRGSWNTT(h.paramsLUT, h.paramsLUT.MaxLevel())
+	tmpRGSW := rgsw.NewCiphertextNTT(h.paramsLUT, h.paramsLUT.MaxLevel())
 
 	a := ct.Value[0][1:]
 	b := ct.Value[0][0]
@@ -78,12 +80,12 @@ func (h *Handler) EvalGate(ct *Ciphertext, logNLWE int, gate *ring.Poly, lutKey 
 		MulRGSWByXPowAlphaMinusOne(lutKey.SkPos[i], h.xPowMinusOne[a[i]], ringQPLUT, tmpRGSW)
 		MulRGSWByXPowAlphaMinusOneAndAdd(lutKey.SkNeg[i], h.xPowMinusOne[-a[i]&mask], ringQPLUT, tmpRGSW)
 		AddOneRGSW(lutKey.OneRGSW, ringQLUT, tmpRGSW)
-		ks.ExternalProduct(acc, tmpRGSW, acc)
+		eval.ExternalProduct(acc, tmpRGSW, acc)
 	}
 
-	ks.SwitchKeysInPlace(0, acc.Value[1], nil, ks.Pool[1].Q, ks.Pool[2].Q) // TODO : add RLWE -> LWE Key
-	ringQLUT.AddLvl(0, acc.Value[0], ks.Pool[1].Q, acc.Value[0])
-	ringQLUT.InvNTT(ks.Pool[2].Q, acc.Value[1])
+	eval.SwitchKeysInPlace(0, acc.Value[1], nil, eval.Pool[1].Q, eval.Pool[2].Q) // TODO : add RLWE -> LWE Key
+	ringQLUT.AddLvl(0, acc.Value[0], eval.Pool[1].Q, acc.Value[0])
+	ringQLUT.InvNTT(eval.Pool[2].Q, acc.Value[1])
 	ringQLUT.InvNTT(acc.Value[0], acc.Value[0])
 
 	Qflo := float64(ringQLUT.Modulus[0])
@@ -111,7 +113,7 @@ func (h *Handler) EvalGate(ct *Ciphertext, logNLWE int, gate *ring.Poly, lutKey 
 // Returns a map[slot_index] -> LUT(ct[slot_index])
 func (h *Handler) ExtractAndEvaluateLUT(ct *rlwe.Ciphertext, lutPolyWihtSlotIndex map[int]*ring.Poly, lutKey *LUTKey) (res map[int]*rlwe.Ciphertext) {
 
-	ks := h.KeySwitcher
+	eval := h.Evaluator
 
 	bRLWEMod2N := h.poolMod2N[0]
 	aRLWEMod2N := h.poolMod2N[1]
@@ -145,7 +147,7 @@ func (h *Handler) ExtractAndEvaluateLUT(ct *rlwe.Ciphertext, lutPolyWihtSlotInde
 
 	res = make(map[int]*rlwe.Ciphertext)
 
-	tmpRGSW := rlwe.NewCiphertextRGSWNTT(h.paramsLUT, h.paramsLUT.MaxLevel())
+	tmpRGSW := rgsw.NewCiphertextNTT(h.paramsLUT, h.paramsLUT.MaxLevel())
 
 	var prevIndex int
 	for index := 0; index < ringQLWE.N; index++ {
@@ -171,7 +173,7 @@ func (h *Handler) ExtractAndEvaluateLUT(ct *rlwe.Ciphertext, lutPolyWihtSlotInde
 				AddOneRGSW(lutKey.OneRGSW, ringQLUT, tmpRGSW)
 
 				// LUT[RLWE] = LUT[RLWE] x RGSW[(X^{a} - 1) * sk_{j}[0] + (X^{-a} - 1) * sk_{j}[1] + 1]
-				ks.ExternalProduct(acc, tmpRGSW, acc)
+				eval.ExternalProduct(acc, tmpRGSW, acc)
 			}
 
 			res[index] = acc.CopyNew()
@@ -184,7 +186,7 @@ func (h *Handler) ExtractAndEvaluateLUT(ct *rlwe.Ciphertext, lutPolyWihtSlotInde
 }
 
 // AddOneRGSW adds one in plaintext on the output RGSW ciphertext.
-func AddOneRGSW(oneRGSW []*ring.Poly, ringQ *ring.Ring, res *rlwe.RGSWCiphertext) {
+func AddOneRGSW(oneRGSW []*ring.Poly, ringQ *ring.Ring, res *rgsw.Ciphertext) {
 	nQ := res.LevelQ() + 1
 	nP := res.LevelP() + 1
 

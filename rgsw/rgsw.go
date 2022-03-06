@@ -6,8 +6,15 @@ import (
 	"math"
 )
 
-type evaluator struct {
-	rlwe.KeySwitcher
+// Evaluator is a struct storing the necessary elements to perform
+// homomorphic operations with RGSW ciphertexts.
+type Evaluator struct {
+	*rlwe.KeySwitcher
+}
+
+// NewEvaluator creates a new evaluator.
+func NewEvaluator(params rlwe.Parameters) *Evaluator {
+	return &Evaluator{rlwe.NewKeySwitcher(params)}
 }
 
 // ExternalProduct computes RLWE x RGSW -> RLWE
@@ -16,7 +23,7 @@ type evaluator struct {
 // RGSW : [(-as + P*w*m1 + e, a), (-bs + e, b + P*w*m1)]
 //  =
 // RLWE : (<RLWE, RGSW[0]>, <RLWE, RGSW[1]>)
-func (eval *evaluator) ExternalProduct(op0 *rlwe.Ciphertext, op1 *Ciphertext, op2 *rlwe.Ciphertext) {
+func (eval *Evaluator) ExternalProduct(op0 *rlwe.Ciphertext, op1 *Ciphertext, op2 *rlwe.Ciphertext) {
 
 	levelQ, levelP := op1.LevelQ(), op1.LevelP()
 
@@ -24,7 +31,7 @@ func (eval *evaluator) ExternalProduct(op0 *rlwe.Ciphertext, op1 *Ciphertext, op
 	if op0 == op2 {
 		c0QP, c1QP = eval.Pool[1], eval.Pool[2]
 	} else {
-		c0QP, c1QP = rlwe.PolyQP{op2.Value[0], eval.Pool[1].P}, rlwe.PolyQP{op2.Value[1], eval.Pool[2].P}
+		c0QP, c1QP = rlwe.PolyQP{Q: op2.Value[0], P: eval.Pool[1].P}, rlwe.PolyQP{Q: op2.Value[1], P: eval.Pool[2].P}
 	}
 
 	if levelP < 1 {
@@ -53,7 +60,7 @@ func (eval *evaluator) ExternalProduct(op0 *rlwe.Ciphertext, op1 *Ciphertext, op
 	}
 }
 
-func (eval *evaluator) externalProduct32Bit(ct0 *rlwe.Ciphertext, rgsw *Ciphertext, c0, c1 *ring.Poly) {
+func (eval *Evaluator) externalProduct32Bit(ct0 *rlwe.Ciphertext, rgsw *Ciphertext, c0, c1 *ring.Poly) {
 
 	// rgsw = [(-as + P*w*m1 + e, a), (-bs + e, b + P*w*m1)]
 	// ct = [-cs + m0 + e, c]
@@ -93,7 +100,7 @@ func (eval *evaluator) externalProduct32Bit(ct0 *rlwe.Ciphertext, rgsw *Cipherte
 	}
 }
 
-func (eval *evaluator) externalProductInPlaceSinglePAndBitDecomp(ct0 *rlwe.Ciphertext, rgsw *Ciphertext, c0QP, c1QP rlwe.PolyQP) {
+func (eval *Evaluator) externalProductInPlaceSinglePAndBitDecomp(ct0 *rlwe.Ciphertext, rgsw *Ciphertext, c0QP, c1QP rlwe.PolyQP) {
 
 	// rgsw = [(-as + P*w*m1 + e, a), (-bs + e, b + P*w*m1)]
 	// ct = [-cs + m0 + e, c]
@@ -172,7 +179,7 @@ func (eval *evaluator) externalProductInPlaceSinglePAndBitDecomp(ct0 *rlwe.Ciphe
 	}
 }
 
-func (eval *evaluator) externalProductInPlaceMultipleP(levelQ, levelP int, ct0 *rlwe.Ciphertext, rgsw *Ciphertext, c0OutQ, c0OutP, c1OutQ, c1OutP *ring.Poly) {
+func (eval *Evaluator) externalProductInPlaceMultipleP(levelQ, levelP int, ct0 *rlwe.Ciphertext, rgsw *Ciphertext, c0OutQ, c0OutP, c1OutQ, c1OutP *ring.Poly) {
 	var reduce int
 
 	ringQ := eval.RingQ()
@@ -181,8 +188,8 @@ func (eval *evaluator) externalProductInPlaceMultipleP(levelQ, levelP int, ct0 *
 
 	c2QP := eval.Pool[0]
 
-	c0QP := rlwe.PolyQP{c0OutQ, c0OutP}
-	c1QP := rlwe.PolyQP{c1OutQ, c1OutP}
+	c0QP := rlwe.PolyQP{Q: c0OutQ, P: c0OutP}
+	c1QP := rlwe.PolyQP{Q: c1OutQ, P: c1OutP}
 
 	alpha := levelP + 1
 	beta := int(math.Ceil(float64(levelQ+1) / float64(levelP+1)))

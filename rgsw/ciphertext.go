@@ -4,7 +4,7 @@ import (
 	"github.com/tuneinsight/lattigo/v3/rlwe"
 )
 
-// RGSWCiphertext is a generic type for RGSW ciphertext.
+// Ciphertext is a generic type for RGSW ciphertext.
 type Ciphertext struct {
 	Value [][][2][2]rlwe.PolyQP
 }

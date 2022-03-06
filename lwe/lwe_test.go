@@ -47,10 +47,10 @@ func TestLWE(t *testing.T) {
 
 		for _, testSet := range []func(params rlwe.Parameters, t *testing.T){
 			testBinFHE,
-			//testLUT,
-			//estRLWEToLWE,
-			//testLWEToRLWE,
-			//testManyRLWEToSingleRLWE,
+			testLUT,
+			testRLWEToLWE,
+			testLWEToRLWE,
+			testManyRLWEToSingleRLWE,
 		} {
 			testSet(params, t)
 			runtime.GC()

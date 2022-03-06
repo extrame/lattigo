@@ -100,6 +100,7 @@ func notGate(x float64) float64 {
 	return 2 / 8.0
 }
 
+// InitGate generate the test rlwe plaintext for the selected gate.
 func InitGate(gate func(x float64) float64, r *ring.Ring) *ring.Poly {
 	return InitLUT(gate, float64(r.Modulus[0])/4.0, r, -1, 1)
 }
