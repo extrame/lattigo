@@ -84,6 +84,14 @@ func NewSwitchingKey(params Parameters, levelQ, levelP int) *SwitchingKey {
 		for j := 0; j < decompBIT; j++ {
 			swk.Value[i][j][0] = params.RingQP().NewPolyLvl(levelQ, levelP)
 			swk.Value[i][j][1] = params.RingQP().NewPolyLvl(levelQ, levelP)
+
+			swk.Value[i][j][0].Q.IsNTT = true
+			swk.Value[i][j][1].Q.IsNTT = true
+
+			if levelP != -1 {
+				swk.Value[i][j][0].P.IsNTT = true
+				swk.Value[i][j][1].P.IsNTT = true
+			}
 		}
 	}
 

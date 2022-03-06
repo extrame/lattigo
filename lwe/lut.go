@@ -194,15 +194,15 @@ func AddOneRGSW(oneRGSW []*ring.Poly, ringQ *ring.Ring, res *rgsw.Ciphertext) {
 		nP = 1
 	}
 
-	for i := range res.Value {
-		for j := range res.Value[i] {
+	for i := range res.Value[0].Value {
+		for j := range res.Value[0].Value[i] {
 			start, end := i*nP, (i+1)*nP
 			if end > nQ {
 				end = nQ
 			}
 			for k := start; k < end; k++ {
-				ring.AddVecNoMod(res.Value[i][j][0][0].Q.Coeffs[k], oneRGSW[j].Coeffs[k], res.Value[i][j][0][0].Q.Coeffs[k])
-				ring.AddVecNoMod(res.Value[i][j][1][1].Q.Coeffs[k], oneRGSW[j].Coeffs[k], res.Value[i][j][1][1].Q.Coeffs[k])
+				ring.AddVecNoMod(res.Value[0].Value[i][j][0].Q.Coeffs[k], oneRGSW[j].Coeffs[k], res.Value[0].Value[i][j][0].Q.Coeffs[k])
+				ring.AddVecNoMod(res.Value[1].Value[i][j][1].Q.Coeffs[k], oneRGSW[j].Coeffs[k], res.Value[1].Value[i][j][1].Q.Coeffs[k])
 			}
 		}
 	}

@@ -153,7 +153,7 @@ func (enc *skEncryptor) Encrypt(plaintext *rlwe.Plaintext, ciphertext *Ciphertex
 	params := enc.params
 	ringQ := params.RingQ()
 	ringQP := params.RingQP()
-	isNTT := ciphertext.Value[0][0][0][0].Q.IsNTT
+	isNTT := ciphertext.Value[0].Value[0][0][0].Q.IsNTT
 	levelQ := ciphertext.LevelQ()
 	levelP := ciphertext.LevelP()
 
@@ -194,8 +194,8 @@ func (enc *skEncryptor) Encrypt(plaintext *rlwe.Plaintext, ciphertext *Ciphertex
 	for j := 0; j < decompBIT; j++ {
 		for i := 0; i < decompRNS; i++ {
 
-			enc.encryptZeroSymetricQP(levelQ, levelP, enc.sk.Value, true, isNTT, ciphertext.Value[i][j][0][0], ciphertext.Value[i][j][0][1])
-			enc.encryptZeroSymetricQP(levelQ, levelP, enc.sk.Value, true, isNTT, ciphertext.Value[i][j][1][0], ciphertext.Value[i][j][1][1])
+			enc.encryptZeroSymetricQP(levelQ, levelP, enc.sk.Value, true, isNTT, ciphertext.Value[0].Value[i][j][0], ciphertext.Value[0].Value[i][j][1])
+			enc.encryptZeroSymetricQP(levelQ, levelP, enc.sk.Value, true, isNTT, ciphertext.Value[1].Value[i][j][0], ciphertext.Value[1].Value[i][j][1])
 
 			if plaintext != nil {
 				for k := 0; k < levelP+1; k++ {
@@ -209,8 +209,8 @@ func (enc *skEncryptor) Encrypt(plaintext *rlwe.Plaintext, ciphertext *Ciphertex
 
 					qi := ringQ.Modulus[index]
 					p0tmp := ptTimesP.Coeffs[index]
-					p1tmp := ciphertext.Value[i][j][0][0].Q.Coeffs[index]
-					p2tmp := ciphertext.Value[i][j][1][1].Q.Coeffs[index]
+					p1tmp := ciphertext.Value[0].Value[i][j][0].Q.Coeffs[index]
+					p2tmp := ciphertext.Value[1].Value[i][j][1].Q.Coeffs[index]
 
 					for w := 0; w < ringQ.N; w++ {
 						p1tmp[w] = ring.CRed(p1tmp[w]+p0tmp[w], qi)
@@ -219,10 +219,10 @@ func (enc *skEncryptor) Encrypt(plaintext *rlwe.Plaintext, ciphertext *Ciphertex
 				}
 			}
 
-			ringQP.MFormLvl(levelQ, levelP, ciphertext.Value[i][j][0][0], ciphertext.Value[i][j][0][0])
-			ringQP.MFormLvl(levelQ, levelP, ciphertext.Value[i][j][0][1], ciphertext.Value[i][j][0][1])
-			ringQP.MFormLvl(levelQ, levelP, ciphertext.Value[i][j][1][0], ciphertext.Value[i][j][1][0])
-			ringQP.MFormLvl(levelQ, levelP, ciphertext.Value[i][j][1][1], ciphertext.Value[i][j][1][1])
+			ringQP.MFormLvl(levelQ, levelP, ciphertext.Value[0].Value[i][j][0], ciphertext.Value[0].Value[i][j][0])
+			ringQP.MFormLvl(levelQ, levelP, ciphertext.Value[0].Value[i][j][1], ciphertext.Value[0].Value[i][j][1])
+			ringQP.MFormLvl(levelQ, levelP, ciphertext.Value[1].Value[i][j][0], ciphertext.Value[1].Value[i][j][0])
+			ringQP.MFormLvl(levelQ, levelP, ciphertext.Value[1].Value[i][j][1], ciphertext.Value[1].Value[i][j][1])
 		}
 
 		ringQ.MulScalar(ptTimesP, 1<<params.LogBase2(), ptTimesP)
