@@ -1,9 +1,9 @@
 package rlwe
 
 import (
-	"math"
-
 	"github.com/tuneinsight/lattigo/v3/ring"
+	"github.com/tuneinsight/lattigo/v3/rlwe/ringqp"
+	"math"
 )
 
 // KeySwitcher is a struct for RLWE key-switching.
@@ -17,9 +17,9 @@ type KeySwitcher struct {
 type keySwitcherBuffer struct {
 	// PoolQ[0]/PoolP[0] : on the fly decomp(c2)
 	// PoolQ[1-5]/PoolP[1-5] : available
-	Pool          [6]PolyQP
+	Pool          [6]ringqp.Poly
 	PoolInvNTT    *ring.Poly
-	PoolDecompQP  []PolyQP // Memory pool for the basis extension in hoisting
+	PoolDecompQP  []ringqp.Poly // Memory pool for the basis extension in hoisting
 	PoolBitDecomp []uint64
 }
 
@@ -29,11 +29,11 @@ func newKeySwitcherBuffer(params Parameters) *keySwitcherBuffer {
 	decompRNS := params.DecompRNS(params.QCount()-1, params.PCount()-1)
 	ringQP := params.RingQP()
 
-	buff.Pool = [6]PolyQP{ringQP.NewPoly(), ringQP.NewPoly(), ringQP.NewPoly(), ringQP.NewPoly(), ringQP.NewPoly(), ringQP.NewPoly()}
+	buff.Pool = [6]ringqp.Poly{ringQP.NewPoly(), ringQP.NewPoly(), ringQP.NewPoly(), ringQP.NewPoly(), ringQP.NewPoly(), ringQP.NewPoly()}
 
 	buff.PoolInvNTT = params.RingQ().NewPoly()
 
-	buff.PoolDecompQP = make([]PolyQP, decompRNS)
+	buff.PoolDecompQP = make([]ringqp.Poly, decompRNS)
 	for i := 0; i < decompRNS; i++ {
 		buff.PoolDecompQP[i] = ringQP.NewPoly()
 	}
@@ -98,7 +98,7 @@ func (ks *KeySwitcher) SwitchKeysInPlace(levelQ int, cx *ring.Poly, evakey *Swit
 // Expects the IsNTT flag of c2 to correctly reflect the domain of c2.
 // PoolDecompQ and PoolDecompQ are vectors of polynomials (mod Q and mod P) that store the
 // special RNS decomposition of c2 (in the NTT domain)
-func (ks *KeySwitcher) DecomposeNTT(levelQ, levelP, alpha int, c2 *ring.Poly, PoolDecomp []PolyQP) {
+func (ks *KeySwitcher) DecomposeNTT(levelQ, levelP, alpha int, c2 *ring.Poly, PoolDecomp []ringqp.Poly) {
 
 	ringQ := ks.RingQ()
 
@@ -174,8 +174,8 @@ func (ks *KeySwitcher) SwitchKeysInPlaceNoModDown(levelQ int, cx *ring.Poly, eva
 		ringQ.NTTLvl(levelQ, cxInvNTT, cxNTT)
 	}
 
-	c0QP := PolyQP{c0Q, c0P}
-	c1QP := PolyQP{c1Q, c1P}
+	c0QP := ringqp.Poly{Q: c0Q, P: c0P}
+	c1QP := ringqp.Poly{Q: c1Q, P: c1P}
 
 	levelP := evakey.Value[0][0][0].P.Level()
 	decompRNS := (levelQ + 1 + levelP) / (levelP + 1)
@@ -240,8 +240,8 @@ func (ks *KeySwitcher) SwitchKeyInPlaceSinglePAndBitDecomp(levelQ int, cx *ring.
 		cxInvNTT = cx
 	}
 
-	c0QP := PolyQP{c0Q, c0P}
-	c1QP := PolyQP{c1Q, c1P}
+	c0QP := ringqp.Poly{Q: c0Q, P: c0P}
+	c1QP := ringqp.Poly{Q: c1Q, P: c1P}
 
 	var levelP int
 	if evakey.Value[0][0][0].P != nil {
@@ -330,7 +330,7 @@ func (ks *KeySwitcher) SwitchKeyInPlaceSinglePAndBitDecomp(levelQ int, cx *ring.
 //
 // pool2 = dot(PoolDecompQ||PoolDecompP * evakey[0]) mod Q
 // pool3 = dot(PoolDecompQ||PoolDecompP * evakey[1]) mod Q
-func (ks *KeySwitcher) KeyswitchHoisted(levelQ int, PoolDecompQP []PolyQP, evakey *SwitchingKey, c0Q, c1Q, c0P, c1P *ring.Poly) {
+func (ks *KeySwitcher) KeyswitchHoisted(levelQ int, PoolDecompQP []ringqp.Poly, evakey *SwitchingKey, c0Q, c1Q, c0P, c1P *ring.Poly) {
 
 	ks.KeyswitchHoistedNoModDown(levelQ, PoolDecompQP, evakey, c0Q, c1Q, c0P, c1P)
 
@@ -345,14 +345,14 @@ func (ks *KeySwitcher) KeyswitchHoisted(levelQ int, PoolDecompQP []PolyQP, evake
 //
 // pool2 = dot(PoolDecompQ||PoolDecompP * evakey[0]) mod QP
 // pool3 = dot(PoolDecompQ||PoolDecompP * evakey[1]) mod QP
-func (ks *KeySwitcher) KeyswitchHoistedNoModDown(levelQ int, PoolDecompQP []PolyQP, evakey *SwitchingKey, c0Q, c1Q, c0P, c1P *ring.Poly) {
+func (ks *KeySwitcher) KeyswitchHoistedNoModDown(levelQ int, PoolDecompQP []ringqp.Poly, evakey *SwitchingKey, c0Q, c1Q, c0P, c1P *ring.Poly) {
 
 	ringQ := ks.RingQ()
 	ringP := ks.RingP()
 	ringQP := ks.RingQP()
 
-	c0QP := PolyQP{c0Q, c0P}
-	c1QP := PolyQP{c1Q, c1P}
+	c0QP := ringqp.Poly{Q: c0Q, P: c0P}
+	c1QP := ringqp.Poly{Q: c1Q, P: c1P}
 
 	levelP := evakey.Value[0][0][0].P.Level()
 	decompRNS := (levelQ + 1 + levelP) / (levelP + 1)

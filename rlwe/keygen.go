@@ -2,8 +2,9 @@ package rlwe
 
 import (
 	"github.com/tuneinsight/lattigo/v3/ring"
+	"github.com/tuneinsight/lattigo/v3/rlwe/gadget"
+	"github.com/tuneinsight/lattigo/v3/rlwe/ringqp"
 	"github.com/tuneinsight/lattigo/v3/utils"
-	"math/big"
 )
 
 // KeyGenerator is an interface implementing the methods of the KeyGenerator.
@@ -30,7 +31,7 @@ type KeyGenerator interface {
 type keyGenerator struct {
 	params           Parameters
 	poolQ            *ring.Poly
-	poolQP           PolyQP
+	poolQP           ringqp.Poly
 	ternarySampler   *ring.TernarySampler
 	gaussianSamplerQ *ring.GaussianSampler
 	uniformSamplerQ  *ring.UniformSampler
@@ -46,13 +47,13 @@ func NewKeyGenerator(params Parameters) KeyGenerator {
 		panic(err)
 	}
 
-	var poolQP PolyQP
+	var poolQP ringqp.Poly
 	var uniformSamplerP *ring.UniformSampler
 	if params.PCount() > 0 {
 		poolQP = params.RingQP().NewPoly()
 		uniformSamplerP = ring.NewUniformSampler(prng, params.RingP())
 	} else {
-		poolQP = PolyQP{Q: params.RingQ().NewPoly()}
+		poolQP = ringqp.Poly{Q: params.RingQ().NewPoly()}
 	}
 
 	return &keyGenerator{
@@ -233,7 +234,7 @@ func (keygen *keyGenerator) GenRotationKeysForInnerSum(sk *SecretKey) (rks *Rota
 	return keygen.GenRotationKeys(keygen.params.GaloisElementsForRowInnerSum(), sk)
 }
 
-func (keygen *keyGenerator) genrotKey(sk PolyQP, galEl uint64, swk *SwitchingKey) {
+func (keygen *keyGenerator) genrotKey(sk ringqp.Poly, galEl uint64, swk *SwitchingKey) {
 
 	skIn := sk
 	skOut := keygen.poolQP
@@ -330,48 +331,23 @@ func (keygen *keyGenerator) GenSwitchingKey(skInput, skOutput *SecretKey) (swk *
 	return
 }
 
-func (keygen *keyGenerator) genSwitchingKey(skIn *ring.Poly, skOut PolyQP, swk *SwitchingKey) {
+func (keygen *keyGenerator) genSwitchingKey(skIn *ring.Poly, skOut ringqp.Poly, swk *SwitchingKey) {
 
-	ringQ := keygen.params.RingQ()
 	ringQP := keygen.params.RingQP()
 
-	levelQ := swk.Value[0][0][0].Q.Level()
-	hasModulusP := swk.Value[0][0][0].P != nil
-
-	var levelP int
-	if hasModulusP {
-
-		levelP = swk.Value[0][0][0].P.Level()
-
-		var pBigInt *big.Int
-		if levelP == keygen.params.PCount()-1 {
-			pBigInt = keygen.params.RingP().ModulusBigint
-		} else {
-			P := keygen.params.RingP().Modulus
-			pBigInt = new(big.Int).SetUint64(P[0])
-			for i := 1; i < levelP+1; i++ {
-				pBigInt.Mul(pBigInt, ring.NewUint(P[i]))
-			}
-		}
-
-		// Computes P * skIn
-		ringQ.MulScalarBigintLvl(levelQ, skIn, pBigInt, keygen.poolQ)
-	} else {
-		levelP = 0
-		ring.CopyLvl(levelQ, skIn, keygen.poolQ)
-	}
+	levelQ := swk.LevelQ()
+	levelP := swk.LevelP()
 
 	RNSDecomp := len(swk.Value)
 	BITDecomp := len(swk.Value[0])
 
-	var index int
 	for j := 0; j < BITDecomp; j++ {
 		for i := 0; i < RNSDecomp; i++ {
 
-			// e
+			// (e, 0)
 			keygen.gaussianSamplerQ.ReadLvl(levelQ, swk.Value[i][j][0].Q)
 
-			if hasModulusP {
+			if levelP != -1 {
 				ringQP.ExtendBasisSmallNormAndCenter(swk.Value[i][j][0].Q, levelP, nil, swk.Value[i][j][0].P)
 				keygen.uniformSamplerP.ReadLvl(levelP, swk.Value[i][j][1].P)
 			}
@@ -379,38 +355,13 @@ func (keygen *keyGenerator) genSwitchingKey(skIn *ring.Poly, skOut PolyQP, swk *
 			ringQP.NTTLazyLvl(levelQ, levelP, swk.Value[i][j][0], swk.Value[i][j][0])
 			ringQP.MFormLvl(levelQ, levelP, swk.Value[i][j][0], swk.Value[i][j][0])
 
-			// a (since a is uniform, we consider we already sample it in the NTT and Montgomery domain)
+			// (e, a)
 			keygen.uniformSamplerQ.ReadLvl(levelQ, swk.Value[i][j][1].Q)
 
-			// e + (skIn * P) * w^2 * (q_star * q_tild) mod QP
-			//
-			// q_prod = prod(q[i*alpha+j])
-			// q_star = Q/qprod
-			// q_tild = q_star^-1 mod q_prod
-			//
-			// Therefore : (skIn * P) * (q_star * q_tild) = sk*P mod q[i*alpha+j], else 0
-			for k := 0; k < levelP+1; k++ {
-
-				index = i*(levelP+1) + k
-
-				// It handles the case where nb pj does not divide nb qi
-				if index >= levelQ+1 {
-					break
-				}
-
-				qi := ringQ.Modulus[index]
-				p0tmp := keygen.poolQ.Coeffs[index]
-				p1tmp := swk.Value[i][j][0].Q.Coeffs[index]
-
-				for w := 0; w < ringQ.N; w++ {
-					p1tmp[w] = ring.CRed(p1tmp[w]+p0tmp[w], qi)
-				}
-			}
-
-			// (skIn * P) * (q_star * q_tild) - a * skOut + e mod QP
+			// (- a * skOut + e, a)
 			ringQP.MulCoeffsMontgomeryAndSubLvl(levelQ, levelP, swk.Value[i][j][1], skOut, swk.Value[i][j][0])
 		}
-
-		ringQ.MulScalar(keygen.poolQ, 1<<keygen.params.logbase2, keygen.poolQ)
 	}
+
+	gadget.AddPolyToGadgetMatrix(skIn, []gadget.Ciphertext{swk.Ciphertext}, *keygen.params.RingQP(), keygen.params.LogBase2(), keygen.poolQ)
 }

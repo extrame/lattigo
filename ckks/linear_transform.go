@@ -4,7 +4,7 @@ import (
 	"runtime"
 
 	"github.com/tuneinsight/lattigo/v3/ring"
-	"github.com/tuneinsight/lattigo/v3/rlwe"
+	"github.com/tuneinsight/lattigo/v3/rlwe/ringqp"
 	"github.com/tuneinsight/lattigo/v3/utils"
 )
 
@@ -109,14 +109,14 @@ type LinearTransform struct {
 	N1       int                 // N1 is the number of inner loops of the baby-step giant-step algorithm used in the evaluation (if N1 == 0, BSGS is not used).
 	Level    int                 // Level is the level at which the matrix is encoded (can be circuit dependent)
 	Scale    float64             // Scale is the scale at which the matrix is encoded (can be circuit dependent)
-	Vec      map[int]rlwe.PolyQP // Vec is the matrix, in diagonal form, where each entry of vec is an indexed non-zero diagonal.
+	Vec      map[int]ringqp.Poly // Vec is the matrix, in diagonal form, where each entry of vec is an indexed non-zero diagonal.
 }
 
 // NewLinearTransform allocates a new LinearTransform with zero plaintexts at the specified level.
 // If BSGSRatio == 0, the LinearTransform is set to not use the BSGS approach.
 // Method will panic if BSGSRatio < 0.
 func NewLinearTransform(params Parameters, nonZeroDiags []int, level, logSlots int, BSGSRatio float64) LinearTransform {
-	vec := make(map[int]rlwe.PolyQP)
+	vec := make(map[int]ringqp.Poly)
 	slots := 1 << logSlots
 	levelQ := level
 	levelP := params.PCount() - 1
@@ -252,7 +252,7 @@ func GenLinearTransform(encoder Encoder, value interface{}, level int, scale flo
 
 	params := enc.params
 	dMat := interfaceMapToMapOfInterface(value)
-	vec := make(map[int]rlwe.PolyQP)
+	vec := make(map[int]ringqp.Poly)
 	slots := 1 << logslots
 	levelQ := level
 	levelP := params.PCount() - 1
@@ -293,7 +293,7 @@ func GenLinearTransformBSGS(encoder Encoder, value interface{}, level int, scale
 
 	index, _, _ := BsgsIndex(value, slots, N1)
 
-	vec := make(map[int]rlwe.PolyQP)
+	vec := make(map[int]ringqp.Poly)
 
 	dMat := interfaceMapToMapOfInterface(value)
 	levelQ := level
@@ -343,7 +343,7 @@ func BsgsIndex(el interface{}, slots, N1 int) (index map[int][]int, rotN1, rotN2
 			nonZeroDiags[i] = key
 			i++
 		}
-	case map[int]rlwe.PolyQP:
+	case map[int]ringqp.Poly:
 		nonZeroDiags = make([]int, len(element))
 		var i int
 		for key := range element {
@@ -542,7 +542,7 @@ func (eval *evaluator) InnerSumLog(ctIn *Ciphertext, batchSize, n int, ctOut *Ci
 
 	ringQ := eval.params.RingQ()
 	ringP := eval.params.RingP()
-	ringQP := rlwe.RingQP{RingQ: ringQ, RingP: ringP}
+	ringQP := eval.params.RingQP()
 
 	levelQ := ctIn.Level()
 	levelP := len(ringP.Modulus) - 1
@@ -654,7 +654,7 @@ func (eval *evaluator) InnerSum(ctIn *Ciphertext, batchSize, n int, ctOut *Ciphe
 
 	ringQ := eval.params.RingQ()
 	ringP := eval.params.RingP()
-	ringQP := rlwe.RingQP{RingQ: ringQ, RingP: ringP}
+	ringQP := eval.params.RingQP()
 
 	levelQ := ctIn.Level()
 	levelP := len(ringP.Modulus) - 1
@@ -773,11 +773,11 @@ func (eval *evaluator) Replicate(ctIn *Ciphertext, batchSize, n int, ctOut *Ciph
 // respectively, each of size params.Beta().
 // The naive approach is used (single hoisting and no baby-step giant-step), which is faster than MultiplyByDiagMatrixBSGS
 // for matrix of only a few non-zero diagonals but uses more keys.
-func (eval *evaluator) MultiplyByDiagMatrix(ctIn *Ciphertext, matrix LinearTransform, PoolDecompQP []rlwe.PolyQP, ctOut *Ciphertext) {
+func (eval *evaluator) MultiplyByDiagMatrix(ctIn *Ciphertext, matrix LinearTransform, PoolDecompQP []ringqp.Poly, ctOut *Ciphertext) {
 
 	ringQ := eval.params.RingQ()
 	ringP := eval.params.RingP()
-	ringQP := rlwe.RingQP{RingQ: ringQ, RingP: ringP}
+	ringQP := eval.params.RingQP()
 
 	levelQ := utils.MinInt(ctOut.Level(), utils.MinInt(ctIn.Level(), matrix.Level))
 	levelP := len(ringP.Modulus) - 1
@@ -788,8 +788,8 @@ func (eval *evaluator) MultiplyByDiagMatrix(ctIn *Ciphertext, matrix LinearTrans
 	QiOverF := eval.params.QiOverflowMargin(levelQ)
 	PiOverF := eval.params.PiOverflowMargin(levelP)
 
-	c0OutQP := rlwe.PolyQP{Q: ctOut.Value[0], P: eval.Pool[5].Q}
-	c1OutQP := rlwe.PolyQP{Q: ctOut.Value[1], P: eval.Pool[5].P}
+	c0OutQP := ringqp.Poly{Q: ctOut.Value[0], P: eval.Pool[5].Q}
+	c1OutQP := ringqp.Poly{Q: ctOut.Value[1], P: eval.Pool[5].P}
 
 	ct0TimesP := eval.Pool[0].Q // ct0 * P mod Q
 	tmp0QP := eval.Pool[1]
@@ -877,11 +877,11 @@ func (eval *evaluator) MultiplyByDiagMatrix(ctIn *Ciphertext, matrix LinearTrans
 // respectively, each of size params.Beta().
 // The BSGS approach is used (double hoisting with baby-step giant-step), which is faster than MultiplyByDiagMatrix
 // for matrix with more than a few non-zero diagonals and uses much less keys.
-func (eval *evaluator) MultiplyByDiagMatrixBSGS(ctIn *Ciphertext, matrix LinearTransform, PoolDecompQP []rlwe.PolyQP, ctOut *Ciphertext) {
+func (eval *evaluator) MultiplyByDiagMatrixBSGS(ctIn *Ciphertext, matrix LinearTransform, PoolDecompQP []ringqp.Poly, ctOut *Ciphertext) {
 
 	ringQ := eval.params.RingQ()
 	ringP := eval.params.RingP()
-	ringQP := rlwe.RingQP{RingQ: ringQ, RingP: ringP}
+	ringQP := eval.params.RingQP()
 
 	levelQ := utils.MinInt(ctOut.Level(), utils.MinInt(ctIn.Level(), matrix.Level))
 	levelP := len(ringP.Modulus) - 1
@@ -912,8 +912,8 @@ func (eval *evaluator) MultiplyByDiagMatrixBSGS(ctIn *Ciphertext, matrix LinearT
 	c1QP := eval.Pool[4]
 
 	// Result in QP
-	c0OutQP := rlwe.PolyQP{Q: ctOut.Value[0], P: eval.Pool[5].Q}
-	c1OutQP := rlwe.PolyQP{Q: ctOut.Value[1], P: eval.Pool[5].P}
+	c0OutQP := ringqp.Poly{Q: ctOut.Value[0], P: eval.Pool[5].Q}
+	c1OutQP := ringqp.Poly{Q: ctOut.Value[1], P: eval.Pool[5].P}
 
 	ringQ.MulScalarBigintLvl(levelQ, ctInTmp0, ringP.ModulusBigint, ctInTmp0) // P*c0
 	ringQ.MulScalarBigintLvl(levelQ, ctInTmp1, ringP.ModulusBigint, ctInTmp1) // P*c1

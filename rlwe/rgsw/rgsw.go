@@ -3,6 +3,7 @@ package rgsw
 import (
 	"github.com/tuneinsight/lattigo/v3/ring"
 	"github.com/tuneinsight/lattigo/v3/rlwe"
+	"github.com/tuneinsight/lattigo/v3/rlwe/ringqp"
 	"math"
 )
 
@@ -27,11 +28,11 @@ func (eval *Evaluator) ExternalProduct(op0 *rlwe.Ciphertext, op1 *Ciphertext, op
 
 	levelQ, levelP := op1.LevelQ(), op1.LevelP()
 
-	var c0QP, c1QP rlwe.PolyQP
+	var c0QP, c1QP ringqp.Poly
 	if op0 == op2 {
 		c0QP, c1QP = eval.Pool[1], eval.Pool[2]
 	} else {
-		c0QP, c1QP = rlwe.PolyQP{Q: op2.Value[0], P: eval.Pool[1].P}, rlwe.PolyQP{Q: op2.Value[1], P: eval.Pool[2].P}
+		c0QP, c1QP = ringqp.Poly{Q: op2.Value[0], P: eval.Pool[1].P}, ringqp.Poly{Q: op2.Value[1], P: eval.Pool[2].P}
 	}
 
 	if levelP < 1 {
@@ -96,7 +97,7 @@ func (eval *Evaluator) externalProduct32Bit(ct0 *rlwe.Ciphertext, rgsw *Cipherte
 	}
 }
 
-func (eval *Evaluator) externalProductInPlaceSinglePAndBitDecomp(ct0 *rlwe.Ciphertext, rgsw *Ciphertext, c0QP, c1QP rlwe.PolyQP) {
+func (eval *Evaluator) externalProductInPlaceSinglePAndBitDecomp(ct0 *rlwe.Ciphertext, rgsw *Ciphertext, c0QP, c1QP ringqp.Poly) {
 
 	// rgsw = [(-as + P*w*m1 + e, a), (-bs + e, b + P*w*m1)]
 	// ct = [-cs + m0 + e, c]
@@ -166,8 +167,8 @@ func (eval *Evaluator) externalProductInPlaceMultipleP(levelQ, levelP int, ct0 *
 
 	c2QP := eval.Pool[0]
 
-	c0QP := rlwe.PolyQP{Q: c0OutQ, P: c0OutP}
-	c1QP := rlwe.PolyQP{Q: c1OutQ, P: c1OutP}
+	c0QP := ringqp.Poly{Q: c0OutQ, P: c0OutP}
+	c1QP := ringqp.Poly{Q: c1OutQ, P: c1OutP}
 
 	alpha := levelP + 1
 	beta := int(math.Ceil(float64(levelQ+1) / float64(levelP+1)))

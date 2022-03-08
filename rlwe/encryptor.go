@@ -2,6 +2,7 @@ package rlwe
 
 import (
 	"github.com/tuneinsight/lattigo/v3/ring"
+	"github.com/tuneinsight/lattigo/v3/rlwe/ringqp"
 	"github.com/tuneinsight/lattigo/v3/utils"
 )
 
@@ -200,7 +201,7 @@ func (enc *pkEncryptor) encrypt(plaintext *Plaintext, ciphertext *Ciphertext) {
 
 	ciphertextNTT := ciphertext.Value[0].IsNTT
 
-	u := PolyQP{Q: poolQ0, P: poolP2}
+	u := ringqp.Poly{Q: poolQ0, P: poolP2}
 
 	enc.ternarySampler.ReadLvl(levelQ, u.Q)
 	ringQP.ExtendBasisSmallNormAndCenter(u.Q, levelP, nil, u.P)
@@ -209,8 +210,8 @@ func (enc *pkEncryptor) encrypt(plaintext *Plaintext, ciphertext *Ciphertext) {
 	ringQP.NTTLvl(levelQ, levelP, u, u)
 	ringQP.MFormLvl(levelQ, levelP, u, u)
 
-	ct0QP := PolyQP{Q: ciphertext.Value[0], P: poolP0}
-	ct1QP := PolyQP{Q: ciphertext.Value[1], P: poolP1}
+	ct0QP := ringqp.Poly{Q: ciphertext.Value[0], P: poolP0}
+	ct1QP := ringqp.Poly{Q: ciphertext.Value[1], P: poolP1}
 
 	// ct0 = u*pk0
 	// ct1 = u*pk1
@@ -221,7 +222,7 @@ func (enc *pkEncryptor) encrypt(plaintext *Plaintext, ciphertext *Ciphertext) {
 	ringQP.InvNTTLvl(levelQ, levelP, ct0QP, ct0QP)
 	ringQP.InvNTTLvl(levelQ, levelP, ct1QP, ct1QP)
 
-	e := PolyQP{Q: poolQ0, P: poolP2}
+	e := ringqp.Poly{Q: poolQ0, P: poolP2}
 
 	enc.gaussianSampler.ReadLvl(levelQ, e.Q)
 	ringQP.ExtendBasisSmallNormAndCenter(e.Q, levelP, nil, e.P)
@@ -398,70 +399,5 @@ func (enc *encryptor) setKey(key interface{}) Encryptor {
 		return &skEncryptor{*enc, key}
 	default:
 		panic("cannot setKey: key must be either *rlwe.PublicKey or *rlwe.SecretKey")
-	}
-}
-
-func (enc *encryptor) encryptZeroSymetricQP(levelQ, levelP int, sk PolyQP, sample, ntt bool, a, b PolyQP) {
-
-	params := enc.params
-	ringQP := params.RingQP()
-
-	hasModulusP := a.P != nil && b.P != nil
-
-	if ntt {
-		enc.gaussianSampler.ReadLvl(levelQ, a.Q)
-
-		if hasModulusP {
-			ringQP.ExtendBasisSmallNormAndCenter(a.Q, levelP, nil, a.P)
-		}
-
-		ringQP.NTTLvl(levelQ, levelP, a, a)
-	}
-
-	if sample {
-		enc.uniformSamplerQ.ReadLvl(levelQ, b.Q)
-
-		if hasModulusP {
-			enc.uniformSamplerP.ReadLvl(levelP, b.P)
-		}
-	}
-
-	ringQP.MulCoeffsMontgomeryAndSubLvl(levelQ, levelP, b, sk, a)
-
-	if !ntt {
-		ringQP.InvNTTLvl(levelQ, levelP, a, a)
-		ringQP.InvNTTLvl(levelQ, levelP, b, b)
-
-		e := PolyQP{Q: enc.poolQ[0], P: enc.poolP[0]}
-		enc.gaussianSampler.ReadLvl(levelQ, e.Q)
-
-		if hasModulusP {
-			ringQP.ExtendBasisSmallNormAndCenter(e.Q, levelP, nil, e.P)
-		}
-
-		ringQP.AddLvl(levelQ, levelP, a, e, a)
-	}
-}
-
-func (enc *encryptor) encryptZeroSymetricQ(levelQ int, sk *ring.Poly, sample, ntt bool, a, b *ring.Poly) {
-
-	params := enc.params
-	ringQ := params.RingQ()
-
-	if ntt {
-		enc.gaussianSampler.ReadLvl(levelQ, a)
-		ringQ.NTTLazyLvl(levelQ, a, a)
-	}
-
-	if sample {
-		enc.uniformSamplerQ.ReadLvl(levelQ, b)
-	}
-
-	ringQ.MulCoeffsMontgomeryAndSubLvl(levelQ, b, sk, a)
-
-	if !ntt {
-		ringQ.InvNTTLvl(levelQ, a, a)
-		ringQ.InvNTTLvl(levelQ, b, b)
-		enc.gaussianSampler.ReadAndAddLvl(levelQ, a)
 	}
 }

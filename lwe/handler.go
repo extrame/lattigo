@@ -1,9 +1,10 @@
 package lwe
 
 import (
-	"github.com/tuneinsight/lattigo/v3/rgsw"
 	"github.com/tuneinsight/lattigo/v3/ring"
 	"github.com/tuneinsight/lattigo/v3/rlwe"
+	"github.com/tuneinsight/lattigo/v3/rlwe/rgsw"
+	"github.com/tuneinsight/lattigo/v3/rlwe/ringqp"
 	"math/big"
 )
 
@@ -17,7 +18,7 @@ type Handler struct {
 	rtks      *rlwe.RotationKeySet
 
 	xPow         []*ring.Poly  //X^n from 0 to LogN LUT
-	xPowMinusOne []rlwe.PolyQP //X^n - 1 from 0 to 2N LWE
+	xPowMinusOne []ringqp.Poly //X^n - 1 from 0 to 2N LWE
 
 	permuteNTTIndex map[uint64][]uint64
 
@@ -64,7 +65,7 @@ func NewHandler(paramsLUT, paramsLWE rlwe.Parameters, rtks *rlwe.RotationKeySet)
 
 	N := ringQ.N
 
-	h.xPowMinusOne = make([]rlwe.PolyQP, 2*N)
+	h.xPowMinusOne = make([]ringqp.Poly, 2*N)
 	for i := 0; i < N; i++ {
 		h.xPowMinusOne[i].Q = ringQ.NewPoly()
 		h.xPowMinusOne[i+N].Q = ringQ.NewPoly()
@@ -243,7 +244,7 @@ func (h *Handler) GenLUTKey(skRLWE, skLWE *rlwe.SecretKey) (lutkey *LUTKey) {
 
 // ReduceRGSW applies a homomorphic modular reduction on the input RGSW ciphertext and returns
 // the result on the output RGSW ciphertext.
-func ReduceRGSW(ctIn *rgsw.Ciphertext, ringQP *rlwe.RingQP, ctOut *rgsw.Ciphertext) {
+func ReduceRGSW(ctIn *rgsw.Ciphertext, ringQP *ringqp.Ring, ctOut *rgsw.Ciphertext) {
 
 	ringQ := ringQP.RingQ
 	ringP := ringQP.RingP
@@ -267,7 +268,7 @@ func ReduceRGSW(ctIn *rgsw.Ciphertext, ringQP *rlwe.RingQP, ctOut *rgsw.Cipherte
 }
 
 // AddRGSW adds the input RGSW ciphertext on the output RGSW ciphertext.
-func AddRGSW(ctIn *rgsw.Ciphertext, ringQP *rlwe.RingQP, ctOut *rgsw.Ciphertext) {
+func AddRGSW(ctIn *rgsw.Ciphertext, ringQP *ringqp.Ring, ctOut *rgsw.Ciphertext) {
 
 	ringQ := ringQP.RingQ
 	ringP := ringQP.RingP
@@ -291,7 +292,7 @@ func AddRGSW(ctIn *rgsw.Ciphertext, ringQP *rlwe.RingQP, ctOut *rgsw.Ciphertext)
 }
 
 // MulRGSWByXPowAlphaMinusOne multiplies the input RGSW ciphertext by (X^alpha - 1) and returns the result on the output RGSW ciphertext.
-func MulRGSWByXPowAlphaMinusOne(ctIn *rgsw.Ciphertext, powXMinusOne rlwe.PolyQP, ringQP *rlwe.RingQP, ctOut *rgsw.Ciphertext) {
+func MulRGSWByXPowAlphaMinusOne(ctIn *rgsw.Ciphertext, powXMinusOne ringqp.Poly, ringQP *ringqp.Ring, ctOut *rgsw.Ciphertext) {
 
 	ringQ := ringQP.RingQ
 	ringP := ringQP.RingP
@@ -315,7 +316,7 @@ func MulRGSWByXPowAlphaMinusOne(ctIn *rgsw.Ciphertext, powXMinusOne rlwe.PolyQP,
 }
 
 // MulRGSWByXPowAlphaMinusOneAndAdd multiplies the input RGSW ciphertext by (X^alpha - 1) and adds the result on the output RGSW ciphertext.
-func MulRGSWByXPowAlphaMinusOneAndAdd(ctIn *rgsw.Ciphertext, powXMinusOne rlwe.PolyQP, ringQP *rlwe.RingQP, ctOut *rgsw.Ciphertext) {
+func MulRGSWByXPowAlphaMinusOneAndAdd(ctIn *rgsw.Ciphertext, powXMinusOne ringqp.Poly, ringQP *ringqp.Ring, ctOut *rgsw.Ciphertext) {
 
 	ringQ := ringQP.RingQ
 	ringP := ringQP.RingP

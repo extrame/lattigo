@@ -226,7 +226,7 @@ func testLUT(params rlwe.Parameters, t *testing.T) {
 		Q:        []uint64{0x7fff801},
 		P:        []uint64{},
 		Sigma:    rlwe.DefaultSigma,
-		LogBase2: 9,
+		LogBase2: 7,
 	})
 
 	assert.Nil(t, err)
@@ -298,7 +298,7 @@ func testLUT(params rlwe.Parameters, t *testing.T) {
 				a = float64(c) / scaleLUT
 			}
 
-			fmt.Printf("%7.4f - %7.4f\n", math.Round(a*8)/8, values[i])
+			fmt.Printf("%7.4f - %7.4f - %7.4f\n", math.Round(a*32)/32, math.Round(a*8)/8, values[i])
 		}
 	})
 }

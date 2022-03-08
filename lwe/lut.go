@@ -1,9 +1,9 @@
 package lwe
 
 import (
-	"github.com/tuneinsight/lattigo/v3/rgsw"
 	"github.com/tuneinsight/lattigo/v3/ring"
 	"github.com/tuneinsight/lattigo/v3/rlwe"
+	"github.com/tuneinsight/lattigo/v3/rlwe/rgsw"
 	"math/big"
 )
 

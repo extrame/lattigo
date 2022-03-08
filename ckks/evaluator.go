@@ -7,6 +7,7 @@ import (
 
 	"github.com/tuneinsight/lattigo/v3/ring"
 	"github.com/tuneinsight/lattigo/v3/rlwe"
+	"github.com/tuneinsight/lattigo/v3/rlwe/ringqp"
 	"github.com/tuneinsight/lattigo/v3/utils"
 )
 
@@ -78,9 +79,9 @@ type Evaluator interface {
 	Rotate(ctIn *Ciphertext, k int, ctOut *Ciphertext)
 	RotateHoistedNew(ctIn *Ciphertext, rotations []int) (ctOut map[int]*Ciphertext)
 	RotateHoisted(ctIn *Ciphertext, rotations []int, ctOut map[int]*Ciphertext)
-	RotateHoistedNoModDownNew(level int, rotations []int, c0 *ring.Poly, c2DecompQP []rlwe.PolyQP) (cOut map[int][2]rlwe.PolyQP)
-	PermuteNTTHoisted(level int, c0, c1 *ring.Poly, c2DecompQP []rlwe.PolyQP, k int, cOut0, cOut1 *ring.Poly)
-	PermuteNTTHoistedNoModDown(level int, c0 *ring.Poly, c2DecompQP []rlwe.PolyQP, k int, ct0OutQ, ct1OutQ, ct0OutP, ct1OutP *ring.Poly)
+	RotateHoistedNoModDownNew(level int, rotations []int, c0 *ring.Poly, c2DecompQP []ringqp.Poly) (cOut map[int][2]ringqp.Poly)
+	PermuteNTTHoisted(level int, c0, c1 *ring.Poly, c2DecompQP []ringqp.Poly, k int, cOut0, cOut1 *ring.Poly)
+	PermuteNTTHoistedNoModDown(level int, c0 *ring.Poly, c2DecompQP []ringqp.Poly, k int, ct0OutQ, ct1OutQ, ct0OutP, ct1OutP *ring.Poly)
 
 	// ===========================
 	// === Advanced Arithmetic ===
@@ -105,8 +106,8 @@ type Evaluator interface {
 	// Linear Transformations
 	LinearTransformNew(ctIn *Ciphertext, linearTransform interface{}) (ctOut []*Ciphertext)
 	LinearTransform(ctIn *Ciphertext, linearTransform interface{}, ctOut []*Ciphertext)
-	MultiplyByDiagMatrix(ctIn *Ciphertext, matrix LinearTransform, c2DecompQP []rlwe.PolyQP, ctOut *Ciphertext)
-	MultiplyByDiagMatrixBSGS(ctIn *Ciphertext, matrix LinearTransform, c2DecompQP []rlwe.PolyQP, ctOut *Ciphertext)
+	MultiplyByDiagMatrix(ctIn *Ciphertext, matrix LinearTransform, c2DecompQP []ringqp.Poly, ctOut *Ciphertext)
+	MultiplyByDiagMatrixBSGS(ctIn *Ciphertext, matrix LinearTransform, c2DecompQP []ringqp.Poly, ctOut *Ciphertext)
 
 	// Inner sum
 	InnerSumLog(ctIn *Ciphertext, batch, n int, ctOut *Ciphertext)
@@ -1491,14 +1492,14 @@ func (eval *evaluator) permuteNTT(ct0 *Ciphertext, galEl uint64, ctOut *Cipherte
 	ringQ.PermuteNTTWithIndexLvl(level, pool3Q, index, ctOut.Value[1])
 }
 
-func (eval *evaluator) RotateHoistedNoModDownNew(level int, rotations []int, c0 *ring.Poly, c2DecompQP []rlwe.PolyQP) (cOut map[int][2]rlwe.PolyQP) {
+func (eval *evaluator) RotateHoistedNoModDownNew(level int, rotations []int, c0 *ring.Poly, c2DecompQP []ringqp.Poly) (cOut map[int][2]ringqp.Poly) {
 	ringQ := eval.params.RingQ()
 	ringP := eval.params.RingP()
-	cOut = make(map[int][2]rlwe.PolyQP)
+	cOut = make(map[int][2]ringqp.Poly)
 	for _, i := range rotations {
 
 		if i != 0 {
-			cOut[i] = [2]rlwe.PolyQP{{Q: ringQ.NewPolyLvl(level), P: ringP.NewPoly()}, {Q: ringQ.NewPolyLvl(level), P: ringP.NewPoly()}}
+			cOut[i] = [2]ringqp.Poly{{Q: ringQ.NewPolyLvl(level), P: ringP.NewPoly()}, {Q: ringQ.NewPolyLvl(level), P: ringP.NewPoly()}}
 			eval.PermuteNTTHoistedNoModDown(level, c0, c2DecompQP, i, cOut[i][0].Q, cOut[i][1].Q, cOut[i][0].P, cOut[i][1].P)
 		}
 	}
@@ -1506,7 +1507,7 @@ func (eval *evaluator) RotateHoistedNoModDownNew(level int, rotations []int, c0 
 	return
 }
 
-func (eval *evaluator) PermuteNTTHoistedNoModDown(level int, c0 *ring.Poly, c2DecompQP []rlwe.PolyQP, k int, ct0OutQ, ct1OutQ, ct0OutP, ct1OutP *ring.Poly) {
+func (eval *evaluator) PermuteNTTHoistedNoModDown(level int, c0 *ring.Poly, c2DecompQP []ringqp.Poly, k int, ct0OutQ, ct1OutQ, ct0OutP, ct1OutP *ring.Poly) {
 
 	pool2Q := eval.Pool[0].Q
 	pool3Q := eval.Pool[1].Q
@@ -1540,7 +1541,7 @@ func (eval *evaluator) PermuteNTTHoistedNoModDown(level int, c0 *ring.Poly, c2De
 	ringQ.PermuteNTTWithIndexLvl(levelP, pool2P, index, ct0OutP)
 }
 
-func (eval *evaluator) PermuteNTTHoisted(level int, c0, c1 *ring.Poly, c2DecompQP []rlwe.PolyQP, k int, cOut0, cOut1 *ring.Poly) {
+func (eval *evaluator) PermuteNTTHoisted(level int, c0, c1 *ring.Poly, c2DecompQP []ringqp.Poly, k int, cOut0, cOut1 *ring.Poly) {
 
 	if k == 0 {
 		cOut0.Copy(c0)
